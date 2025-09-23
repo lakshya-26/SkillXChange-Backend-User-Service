@@ -19,9 +19,10 @@ const signup = (req, res, next) => {
 
 const login = (req, res, next) => {
   const schema = Joi.object({
-    email: Joi.string().email().required(),
+    email: Joi.string().email().optional(),
+    username: Joi.string().alphanum().min(3).max(30).optional(),
     password: Joi.string().min(8).required(),
-  });
+  }).or('email', 'username');
 
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };

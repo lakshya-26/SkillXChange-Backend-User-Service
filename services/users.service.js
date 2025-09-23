@@ -13,6 +13,13 @@ const findUserByEmail = async (payload) => {
   });
 };
 
+const findUserByUsername = async (payload) => {
+  const { username } = payload;
+  return prisma.user.findUnique({
+    where: { username },
+  });
+};
+
 const createUser = async (payload) => {
   const { name, email, password, username } = payload;
 
@@ -39,16 +46,30 @@ const createUser = async (payload) => {
 };
 
 const login = async (payload) => {
-  const { email, password } = payload;
+  const { email, username, password } = payload;
 
-  const user = await findUserByEmail({ email });
-  if (!user) {
-    throw new CustomException('Invalid email or password', 401);
+  if (!email && !username) {
+    throw new CustomException('Email or username is required', 400);
+  }
+
+  let user;
+  if (email) {
+    user = await findUserByEmail({ email });
+    if (!user) {
+      throw new CustomException('Email not found', 401);
+    }
+  }
+
+  if (username) {
+    user = await findUserByUsername({ username });
+    if (!user) {
+      throw new CustomException('Username not found', 401);
+    }
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.password);
   if (!isPasswordValid) {
-    throw new CustomException('Invalid email or password', 401);
+    throw new CustomException('Incorrect password', 401);
   }
 
   const { accessToken, refreshToken } = createTokens(user);
