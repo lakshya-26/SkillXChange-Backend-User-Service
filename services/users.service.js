@@ -1,4 +1,7 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const redis = require('../utilites/redis');
+const { sendEmail } = require('../utilites/email');
 const { CustomException } = require('../utilites/errorHandler');
 const { createTokens } = require('../utilites/jwtHelper');
 const prisma = require('../utilites/prisma');
@@ -87,10 +90,71 @@ const updateProfile = async (payload) => {
   return { message: 'Profile updated successfully' };
 };
 
+const generateResetToken = () => {
+  return crypto.randomBytes(32).toString('hex');
+};
+
+const sendResetToken = async (payload) => {
+  const { email } = payload;
+
+  const user = await findUserByEmail({ email });
+  if (!user) {
+    throw new CustomException('User with this email does not exist', 404);
+  }
+
+  const resetToken = generateResetToken();
+  const redisKey = `reset:${resetToken}`;
+
+  await redis.set(redisKey, email, 900);
+
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+  const subject = 'Password Reset Request';
+  const text = `Click this link to reset your password: ${resetLink}. This link will expire in 15 minutes.`;
+  const html = `<p>Click <a href="${resetLink}">here</a> to reset your password.</p><p>This link will expire in 15 minutes.</p>`;
+
+  const emailSent = await sendEmail(email, subject, text, html);
+  if (!emailSent) {
+    throw new CustomException('Failed to send reset email', 500);
+  }
+
+  return { message: 'Password reset link sent successfully to your email' };
+};
+
+const resetPasswordWithToken = async (payload) => {
+  const { token, newPassword } = payload;
+
+  const redisKey = `reset:${token}`;
+  const email = await redis.get(redisKey);
+
+  if (!email) {
+    throw new CustomException('Reset token has expired or is invalid', 400);
+  }
+
+  const user = await findUserByEmail({ email });
+  if (!user) {
+    throw new CustomException('User not found', 404);
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await prisma.user.update({
+    where: { email },
+    data: { password_hash: hashedPassword },
+  });
+
+  await redis.del(redisKey);
+
+  return { message: 'Password reset successfully' };
+};
+
 module.exports = {
   createUser,
   login,
   findUserByEmail,
   findUserById,
   updateProfile,
+  generateResetToken,
+  sendResetToken,
+  resetPasswordWithToken,
 };
