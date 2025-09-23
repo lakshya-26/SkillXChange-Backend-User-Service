@@ -70,6 +70,28 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+const forgotPassword = async (req, res, next) => {
+  try {
+    const result = await userService.sendResetToken(req.body);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const result = await userService.resetPasswordWithToken(req.body);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -77,4 +99,6 @@ module.exports = {
   profile,
   logout,
   updateProfile,
+  forgotPassword,
+  resetPassword,
 };

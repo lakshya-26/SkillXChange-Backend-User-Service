@@ -39,8 +39,27 @@ const updateProfile = (req, res, next) => {
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };
 
+const forgotPassword = (req, res, next) => {
+  const schema = Joi.object({
+    email: Joi.string().email().required(),
+  });
+
+  return validateRequest(req, res, next, schema, requestParameterTypes.body);
+};
+
+const resetPassword = (req, res, next) => {
+  const schema = Joi.object({
+    token: Joi.string().required(),
+    newPassword: Joi.string().min(8).required(),
+  });
+
+  return validateRequest(req, res, next, schema, requestParameterTypes.body);
+};
+
 module.exports = {
   signup,
   login,
   updateProfile,
+  forgotPassword,
+  resetPassword,
 };

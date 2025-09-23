@@ -6,23 +6,25 @@ const {
   signup,
   login,
   updateProfile,
+  forgotPassword,
+  resetPassword,
 } = require('../validators/users.validator');
 
 const router = Router();
 
 // Public routes
+router.post('/signup', signup, usersController.signup, sendResponse);
+router.post('/login', login, usersController.login, sendResponse);
 router.post(
-  '/signup',
-  authMiddleware,
-  signup,
-  usersController.signup,
+  '/forgot-password',
+  forgotPassword,
+  usersController.forgotPassword,
   sendResponse
 );
 router.post(
-  '/login',
-  authMiddleware,
-  login,
-  usersController.login,
+  '/reset-password',
+  resetPassword,
+  usersController.resetPassword,
   sendResponse
 );
 
