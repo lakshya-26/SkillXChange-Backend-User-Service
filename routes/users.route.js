@@ -5,6 +5,7 @@ const { authMiddleware } = require('../middlewares/auth.middleware');
 const {
   signup,
   login,
+  profile,
   updateProfile,
   forgotPassword,
   resetPassword,
@@ -31,7 +32,13 @@ router.post(
 // Protected routes
 router.post('/logout', authMiddleware, usersController.logout, sendResponse);
 router.get('/me', authMiddleware, usersController.me, sendResponse);
-router.get('/profile', authMiddleware, usersController.profile, sendResponse);
+router.get(
+  '/profile/:id',
+  authMiddleware,
+  profile,
+  usersController.profile,
+  sendResponse
+);
 router.put(
   '/profile/update',
   authMiddleware,

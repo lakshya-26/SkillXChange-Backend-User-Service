@@ -12,6 +12,15 @@ const signup = (req, res, next) => {
     username: Joi.string().alphanum().min(3).max(30).required(),
     email: Joi.string().email().required(),
     password: Joi.string().min(8).required(),
+    profession: Joi.string().min(3).max(50).required(),
+    skillsToLearn: Joi.array().items(Joi.string().min(3).max(50)).required(),
+    skillsToTeach: Joi.array().items(Joi.string().min(3).max(50)).required(),
+    address: Joi.string().min(3).max(50).required(),
+    phoneNumber: Joi.string().empty('').min(10).max(10).optional(),
+    instagram: Joi.string().empty('').min(3).max(50).optional(),
+    twitter: Joi.string().empty('').min(3).max(50).optional(),
+    github: Joi.string().empty('').min(3).max(50).optional(),
+    linkedin: Joi.string().empty('').min(3).max(50).optional(),
   });
 
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
@@ -25,6 +34,14 @@ const login = (req, res, next) => {
   }).or('email', 'username');
 
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
+};
+
+const profile = (req, res, next) => {
+  const schema = Joi.object({
+    id: Joi.number().integer().required(),
+  });
+
+  return validateRequest(req, res, next, schema, requestParameterTypes.params);
 };
 
 const updateProfile = (req, res, next) => {
@@ -60,6 +77,7 @@ const resetPassword = (req, res, next) => {
 module.exports = {
   signup,
   login,
+  profile,
   updateProfile,
   forgotPassword,
   resetPassword,
