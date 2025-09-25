@@ -6,6 +6,7 @@ const { CustomException } = require('../utilites/errorHandler');
 const { createTokens } = require('../utilites/jwtHelper');
 const prisma = require('../utilites/prisma');
 const { SALT } = require('../constants/auth.constant');
+const userSerializer = require('../serializers/users.serializer');
 
 const findUserByEmail = async (payload) => {
   const { email } = payload;
@@ -159,15 +160,44 @@ const login = async (payload) => {
 const findUserById = async (payload) => {
   const { id } = payload;
   const user = await prisma.user.findUnique({
-    where: { id: parseInt(id) },
+    where: {
+      id: parseInt(id),
+    },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      email: true,
+      user_details: {
+        select: {
+          profession: true,
+          address: true,
+          phone_number: true,
+          instagram: true,
+          twitter: true,
+          linkedin: true,
+          github: true,
+        },
+      },
+      skills: {
+        select: {
+          type: true,
+          skill: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!user) {
     throw new CustomException('User not found', 404);
   }
 
-  const { password_hash: _, ...userWithoutPassword } = user;
-  return userWithoutPassword;
+  const serializedUser = userSerializer.userDetails(user);
+  return serializedUser;
 };
 
 const updateProfile = async (payload) => {
