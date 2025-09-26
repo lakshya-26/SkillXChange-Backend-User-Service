@@ -40,7 +40,7 @@ const me = async (req, res, next) => {
 
 const profile = async (req, res, next) => {
   try {
-    const user = await userService.findUserById({ id: req.user.id });
+    const user = await userService.findUserById({ id: req.params.id });
     req.statusCode = 200;
     req.data = user;
     next();

@@ -15,7 +15,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@prisma/client": "^6.15.0",
+    "@prisma/client": "^6.16.2",
     "bcryptjs": "^3.0.2",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
@@ -36,7 +36,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^13.1.0",
     "prettier": "^3.6.2",
-    "prisma": "^6.15.0"
+    "prisma": "^6.16.2"
   },
   "lint-staged": {
     "*.js": [
