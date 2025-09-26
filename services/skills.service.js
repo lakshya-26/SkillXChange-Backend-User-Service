@@ -43,13 +43,6 @@ const getSkills = async (payload) => {
         },
         orderBy: [
           {
-            _relevance: {
-              fields: ['name'],
-              search: term,
-              sort: 'asc',
-            },
-          },
-          {
             name: 'asc',
           },
         ],
