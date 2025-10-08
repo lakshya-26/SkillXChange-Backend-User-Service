@@ -276,6 +276,23 @@ const resetPasswordWithToken = async (payload) => {
   return { message: 'Password reset successfully' };
 };
 
+const findUserDetails = async (payload) => {
+  const { email, username } = payload;
+  let user;
+
+  if (email) {
+    user = await findUserByEmail({ email });
+  } else if (username) {
+    user = await findUserByUsername({ username });
+  }
+
+  if (!user) {
+    throw new CustomException('User not found', 404);
+  }
+  const serializedUser = userSerializer.userDetails(user, payload, false);
+  return serializedUser;
+};
+
 module.exports = {
   createUser,
   login,
@@ -285,4 +302,5 @@ module.exports = {
   generateResetToken,
   sendResetToken,
   resetPasswordWithToken,
+  findUserDetails,
 };

@@ -9,6 +9,7 @@ const {
   updateProfile,
   forgotPassword,
   resetPassword,
+  findUserDetails,
 } = require('../validators/users.validator');
 
 const router = Router();
@@ -28,6 +29,7 @@ router.post(
   usersController.resetPassword,
   sendResponse
 );
+router.get('/', findUserDetails, usersController.findUserDetails, sendResponse);
 
 // Protected routes
 router.post('/logout', authMiddleware, usersController.logout, sendResponse);

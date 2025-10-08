@@ -74,6 +74,15 @@ const resetPassword = (req, res, next) => {
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };
 
+const findUserDetails = (req, res, next) => {
+  const schema = Joi.object({
+    email: Joi.string().email().optional(),
+    username: Joi.string().alphanum().min(3).max(30).optional(),
+  }).or('email', 'username');
+
+  return validateRequest(req, res, next, schema, requestParameterTypes.query);
+};
+
 module.exports = {
   signup,
   login,
@@ -81,4 +90,5 @@ module.exports = {
   updateProfile,
   forgotPassword,
   resetPassword,
+  findUserDetails,
 };
