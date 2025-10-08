@@ -49,7 +49,6 @@ const updateProfile = (req, res, next) => {
     name: Joi.string().min(3).max(50),
     username: Joi.string().alphanum().min(3).max(30),
     email: Joi.string().email(),
-    password: Joi.string().min(8),
   })
     .or('name', 'username', 'email', 'password')
     .required();
