@@ -103,6 +103,17 @@ const findUserDetails = async (req, res, next) => {
   }
 };
 
+const refreshToken = async (req, res, next) => {
+  try {
+    const result = await userService.refreshToken(req.body);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -113,4 +124,5 @@ module.exports = {
   forgotPassword,
   resetPassword,
   findUserDetails,
+  refreshToken,
 };

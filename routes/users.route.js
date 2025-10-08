@@ -5,6 +5,7 @@ const { authMiddleware } = require('../middlewares/auth.middleware');
 const {
   signup,
   login,
+  refreshToken,
   profile,
   updateProfile,
   forgotPassword,
@@ -17,6 +18,12 @@ const router = Router();
 // Public routes
 router.post('/signup', signup, usersController.signup, sendResponse);
 router.post('/login', login, usersController.login, sendResponse);
+router.post(
+  '/refresh-token',
+  refreshToken,
+  usersController.refreshToken,
+  sendResponse
+);
 router.post(
   '/forgot-password',
   forgotPassword,
