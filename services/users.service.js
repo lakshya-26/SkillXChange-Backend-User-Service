@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const redis = require('../utilites/redis');
 const { sendEmail } = require('../utilites/email');
 const { CustomException } = require('../utilites/errorHandler');
-const { createTokens } = require('../utilites/jwtHelper');
+const { createTokens, verifyToken } = require('../utilites/jwtHelper');
 const prisma = require('../utilites/prisma');
 const { SALT } = require('../constants/auth.constant');
 const userSerializer = require('../serializers/users.serializer');
@@ -293,6 +293,21 @@ const findUserDetails = async (payload) => {
   return serializedUser;
 };
 
+const refreshToken = async (payload) => {
+  const { refreshToken } = payload;
+  const decoded = verifyToken(refreshToken);
+  if (!decoded) {
+    throw new CustomException('Invalid refresh token', 401);
+  }
+  const user = await findUserById({ id: decoded.id });
+  if (!user) {
+    throw new CustomException('User not found', 404);
+  }
+
+  const { accessToken, refreshToken: newRefreshToken } = createTokens(user);
+  return { accessToken, refreshToken: newRefreshToken };
+};
+
 module.exports = {
   createUser,
   login,
@@ -303,4 +318,5 @@ module.exports = {
   sendResetToken,
   resetPasswordWithToken,
   findUserDetails,
+  refreshToken,
 };

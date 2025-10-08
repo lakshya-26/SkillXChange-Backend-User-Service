@@ -83,6 +83,14 @@ const findUserDetails = (req, res, next) => {
   return validateRequest(req, res, next, schema, requestParameterTypes.query);
 };
 
+const refreshToken = (req, res, next) => {
+  const schema = Joi.object({
+    refreshToken: Joi.string().required(),
+  });
+
+  return validateRequest(req, res, next, schema, requestParameterTypes.body);
+};
+
 module.exports = {
   signup,
   login,
@@ -91,4 +99,5 @@ module.exports = {
   forgotPassword,
   resetPassword,
   findUserDetails,
+  refreshToken,
 };
