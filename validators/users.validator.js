@@ -15,7 +15,7 @@ const signup = (req, res, next) => {
     profession: Joi.string().min(3).max(50).required(),
     skillsToLearn: Joi.array().items(Joi.string().min(3).max(50)).required(),
     skillsToTeach: Joi.array().items(Joi.string().min(3).max(50)).required(),
-    address: Joi.string().min(3).max(50).required(),
+    address: Joi.string().min(3).max(1000).required(),
     phoneNumber: Joi.string().empty('').min(10).max(10).optional(),
     instagram: Joi.string().empty('').min(3).max(50).optional(),
     twitter: Joi.string().empty('').min(3).max(50).optional(),

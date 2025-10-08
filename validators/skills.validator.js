@@ -8,7 +8,7 @@ const requestParameterTypes = {
 
 const addSkill = (req, res, next) => {
   const schema = Joi.object({
-    name: Joi.string().min(3).max(50).required(),
+    name: Joi.string().min(1).max(50).required(),
   });
 
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
@@ -16,7 +16,7 @@ const addSkill = (req, res, next) => {
 
 const getSkills = (req, res, next) => {
   const schema = Joi.object({
-    term: Joi.string().min(3).max(50).optional(),
+    term: Joi.string().min(1).max(50).optional(),
   });
 
   return validateRequest(req, res, next, schema, requestParameterTypes.query);
