@@ -5,7 +5,7 @@ const userDetails = (user, payload = {}, includeAllDetails = true) => {
       name: user.name,
       profession: user.user_details?.profession,
       address: user.user_details?.address,
-      phone_number: user.user_details?.phone_number,
+      phoneNumber: user.user_details?.phone_number,
       instagram: user.user_details?.instagram,
       twitter: user.user_details?.twitter,
       linkedin: user.user_details?.linkedin,

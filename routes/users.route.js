@@ -49,7 +49,7 @@ router.get(
   sendResponse
 );
 router.put(
-  '/profile/update',
+  '/profile',
   authMiddleware,
   updateProfile,
   usersController.updateProfile,
