@@ -58,22 +58,7 @@ const updateProfile = (req, res, next) => {
     twitter: Joi.string().empty('').min(3).max(50).optional(),
     github: Joi.string().empty('').min(3).max(50).optional(),
     linkedin: Joi.string().empty('').min(3).max(50).optional(),
-  })
-    .or(
-      'name',
-      'username',
-      'email',
-      'profession',
-      'skillsToLearn',
-      'skillsToTeach',
-      'address',
-      'phoneNumber',
-      'instagram',
-      'twitter',
-      'github',
-      'linkedin'
-    )
-    .required();
+  });
 
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };

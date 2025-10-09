@@ -60,6 +60,9 @@ const updateProfile = async (req, res, next) => {
     const payload = {
       id: req.user.id,
       profileData: req.body,
+      file: req.file
+        ? { buffer: req.file.buffer, mimetype: req.file.mimetype }
+        : null,
     };
     const updatedUser = await userService.updateProfile(payload);
     req.statusCode = 200;
