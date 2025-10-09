@@ -10,6 +10,7 @@ const userDetails = (user, payload = {}, includeAllDetails = true) => {
       twitter: user.user_details?.twitter,
       linkedin: user.user_details?.linkedin,
       github: user.user_details?.github,
+      profileImage: user.user_details?.profile_image,
     }),
     ...(includeAllDetails && {
       skillsToLearn:

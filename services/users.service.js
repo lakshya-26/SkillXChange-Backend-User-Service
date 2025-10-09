@@ -7,6 +7,7 @@ const { createTokens, verifyToken } = require('../utilites/jwtHelper');
 const prisma = require('../utilites/prisma');
 const { SALT } = require('../constants/auth.constant');
 const userSerializer = require('../serializers/users.serializer');
+const { uploadBuffer } = require('../utilites/cloudinary');
 
 const findUserByEmail = async (payload) => {
   const { email } = payload;
@@ -41,6 +42,7 @@ const getUserDetails = async (id) => {
           twitter: true,
           linkedin: true,
           github: true,
+          profile_image: true,
         },
         where: {
           deletedAt: null,
@@ -211,7 +213,7 @@ const findUserById = async (payload) => {
 };
 
 const updateProfile = async (payload) => {
-  const { id, profileData } = payload;
+  const { id, profileData, file } = payload;
   const {
     name,
     username,
@@ -226,6 +228,30 @@ const updateProfile = async (payload) => {
     linkedin,
     github,
   } = profileData;
+
+  // Normalize arrays when coming from multipart/form-data as strings
+  let learn = skillsToLearn;
+  let teach = skillsToTeach;
+  if (typeof learn === 'string') {
+    try {
+      learn = JSON.parse(learn);
+    } catch {
+      learn = learn
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  if (typeof teach === 'string') {
+    try {
+      teach = JSON.parse(teach);
+    } catch {
+      teach = teach
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
 
   const numericUserId = parseInt(id);
 
@@ -252,6 +278,17 @@ const updateProfile = async (payload) => {
     }
   }
 
+  // Resolve profile image URL
+  let profileImageUrl;
+  if (file && file.buffer) {
+    profileImageUrl = await uploadBuffer(
+      file.buffer,
+      `profiles/${numericUserId}`,
+      'avatar',
+      file.mimetype
+    );
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: numericUserId },
@@ -268,6 +305,7 @@ const updateProfile = async (payload) => {
         twitter,
         linkedin,
         github,
+        ...(profileImageUrl ? { profile_image: profileImageUrl } : {}),
       },
       create: {
         user_id: numericUserId,
@@ -278,15 +316,16 @@ const updateProfile = async (payload) => {
         twitter,
         linkedin,
         github,
+        ...(profileImageUrl ? { profile_image: profileImageUrl } : {}),
       },
     });
 
-    const willReplaceLearn = Array.isArray(skillsToLearn);
-    const willReplaceTeach = Array.isArray(skillsToTeach);
+    const willReplaceLearn = Array.isArray(learn);
+    const willReplaceTeach = Array.isArray(teach);
 
     if (willReplaceLearn || willReplaceTeach) {
-      const learnList = willReplaceLearn ? skillsToLearn : [];
-      const teachList = willReplaceTeach ? skillsToTeach : [];
+      const learnList = willReplaceLearn ? learn : [];
+      const teachList = willReplaceTeach ? teach : [];
 
       const namesToEnsure = [
         ...new Set([...(learnList || []), ...(teachList || [])]),
