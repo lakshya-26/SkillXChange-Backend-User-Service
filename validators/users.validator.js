@@ -46,11 +46,33 @@ const profile = (req, res, next) => {
 
 const updateProfile = (req, res, next) => {
   const schema = Joi.object({
-    name: Joi.string().min(3).max(50),
-    username: Joi.string().alphanum().min(3).max(30),
-    email: Joi.string().email(),
+    name: Joi.string().min(3).max(50).optional(),
+    username: Joi.string().alphanum().min(3).max(30).optional(),
+    email: Joi.string().email().optional(),
+    profession: Joi.string().min(3).max(50).optional(),
+    skillsToLearn: Joi.array().items(Joi.string().min(3).max(50)).optional(),
+    skillsToTeach: Joi.array().items(Joi.string().min(3).max(50)).optional(),
+    address: Joi.string().min(3).max(1000).optional(),
+    phoneNumber: Joi.string().empty('').min(10).max(10).optional(),
+    instagram: Joi.string().empty('').min(3).max(50).optional(),
+    twitter: Joi.string().empty('').min(3).max(50).optional(),
+    github: Joi.string().empty('').min(3).max(50).optional(),
+    linkedin: Joi.string().empty('').min(3).max(50).optional(),
   })
-    .or('name', 'username', 'email', 'password')
+    .or(
+      'name',
+      'username',
+      'email',
+      'profession',
+      'skillsToLearn',
+      'skillsToTeach',
+      'address',
+      'phoneNumber',
+      'instagram',
+      'twitter',
+      'github',
+      'linkedin'
+    )
     .required();
 
   return validateRequest(req, res, next, schema, requestParameterTypes.body);

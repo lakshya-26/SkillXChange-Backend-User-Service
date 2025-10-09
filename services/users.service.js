@@ -22,6 +22,47 @@ const findUserByUsername = async (payload) => {
   });
 };
 
+const getUserDetails = async (id) => {
+  return prisma.user.findUnique({
+    where: {
+      id,
+    },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      email: true,
+      user_details: {
+        select: {
+          profession: true,
+          address: true,
+          phone_number: true,
+          instagram: true,
+          twitter: true,
+          linkedin: true,
+          github: true,
+        },
+        where: {
+          deletedAt: null,
+        },
+      },
+      skills: {
+        select: {
+          type: true,
+          skill: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        where: {
+          deletedAt: null,
+        },
+      },
+    },
+  });
+};
+
 /**
  * Creates a new user with profile details and skills.
  *
@@ -159,38 +200,7 @@ const login = async (payload) => {
 
 const findUserById = async (payload) => {
   const { id } = payload;
-  const user = await prisma.user.findUnique({
-    where: {
-      id: parseInt(id),
-    },
-    select: {
-      id: true,
-      name: true,
-      username: true,
-      email: true,
-      user_details: {
-        select: {
-          profession: true,
-          address: true,
-          phone_number: true,
-          instagram: true,
-          twitter: true,
-          linkedin: true,
-          github: true,
-        },
-      },
-      skills: {
-        select: {
-          type: true,
-          skill: {
-            select: {
-              name: true,
-            },
-          },
-        },
-      },
-    },
-  });
+  const user = await getUserDetails(parseInt(id));
 
   if (!user) {
     throw new CustomException('User not found', 404);
@@ -202,20 +212,128 @@ const findUserById = async (payload) => {
 
 const updateProfile = async (payload) => {
   const { id, profileData } = payload;
+  const {
+    name,
+    username,
+    email,
+    profession,
+    skillsToLearn,
+    skillsToTeach,
+    address,
+    phoneNumber,
+    instagram,
+    twitter,
+    linkedin,
+    github,
+  } = profileData;
 
-  const user = await prisma.user.findUnique({
-    where: { id: parseInt(id) },
+  const numericUserId = parseInt(id);
+
+  const existingUser = await prisma.user.findUnique({
+    where: { id: numericUserId },
   });
 
-  if (!user) {
+  if (!existingUser) {
     throw new CustomException('User not found', 404);
   }
 
-  await prisma.user.update({
-    where: { id: parseInt(id) },
-    data: profileData,
+  // Ensure email/username uniqueness if being changed
+  if (email && email !== existingUser.email) {
+    const emailOwner = await prisma.user.findUnique({ where: { email } });
+    if (emailOwner) {
+      throw new CustomException('User with this email already exists', 409);
+    }
+  }
+
+  if (username && username !== existingUser.username) {
+    const usernameOwner = await prisma.user.findUnique({ where: { username } });
+    if (usernameOwner) {
+      throw new CustomException('Username already exists', 409);
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: numericUserId },
+      data: { name, username, email },
+    });
+
+    await tx.userDetails.upsert({
+      where: { user_id: numericUserId },
+      update: {
+        profession,
+        address,
+        phone_number: phoneNumber,
+        instagram,
+        twitter,
+        linkedin,
+        github,
+      },
+      create: {
+        user_id: numericUserId,
+        profession: profession || '',
+        address: address || '',
+        phone_number: phoneNumber,
+        instagram,
+        twitter,
+        linkedin,
+        github,
+      },
+    });
+
+    const willReplaceLearn = Array.isArray(skillsToLearn);
+    const willReplaceTeach = Array.isArray(skillsToTeach);
+
+    if (willReplaceLearn || willReplaceTeach) {
+      const learnList = willReplaceLearn ? skillsToLearn : [];
+      const teachList = willReplaceTeach ? skillsToTeach : [];
+
+      const namesToEnsure = [
+        ...new Set([...(learnList || []), ...(teachList || [])]),
+      ];
+
+      if (namesToEnsure.length > 0) {
+        await tx.skill.createMany({
+          data: namesToEnsure.map((n) => ({ name: n })),
+          skipDuplicates: true,
+        });
+      }
+
+      const typesToReplace = [];
+      if (willReplaceLearn) typesToReplace.push('LEARN');
+      if (willReplaceTeach) typesToReplace.push('TEACH');
+
+      await tx.userSkills.deleteMany({
+        where: { user_id: numericUserId, type: { in: typesToReplace } },
+      });
+
+      const skillsFromDb = namesToEnsure.length
+        ? await tx.skill.findMany({ where: { name: { in: namesToEnsure } } })
+        : [];
+      const nameToId = new Map(skillsFromDb.map((s) => [s.name, s.id]));
+
+      const learnRows = (learnList || []).map((skillName) => ({
+        user_id: numericUserId,
+        skill_id: nameToId.get(skillName),
+        type: 'LEARN',
+      }));
+      const teachRows = (teachList || []).map((skillName) => ({
+        user_id: numericUserId,
+        skill_id: nameToId.get(skillName),
+        type: 'TEACH',
+      }));
+
+      const rows = [...learnRows, ...teachRows].filter((r) => r.skill_id);
+      if (rows.length > 0) {
+        await tx.userSkills.createMany({ data: rows });
+      }
+    }
   });
-  return { message: 'Profile updated successfully' };
+
+  const user = await getUserDetails(numericUserId);
+  const serializedUser = userSerializer.userDetails(user);
+
+  return { ...serializedUser, message: 'Profile updated successfully' };
 };
 
 const generateResetToken = () => {
