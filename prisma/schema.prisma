@@ -10,6 +10,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum SkillType {
+  LEARN
+  TEACH
+}
+
 model User {
   id              Int       @id @default(autoincrement())
   name            String    
@@ -20,5 +25,53 @@ model User {
   updatedAt       DateTime  @default(now()) @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
+  user_details    UserDetails?
+  skills          UserSkills[]
+
   @@map("users") // Maps this model to the existing `users` table
+}
+
+model UserDetails {
+  id              Int       @id @default(autoincrement())
+  user_id         Int       @unique
+  user            User      @relation(fields: [user_id], references: [id])
+  profession      String
+  address         String
+  phone_number    String?
+  instagram       String?
+  twitter         String?
+  linkedin        String?
+  github          String?
+  profile_image   String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  @@map("user_details") // Maps this model to the existing `user_details` table
+}
+
+model Skill {
+  id              Int       @id @default(autoincrement())
+  name            String    @unique
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  users           UserSkills[]
+
+  @@map("skills") // Maps this model to the existing `skills` table
+}
+
+model UserSkills {
+  id              Int       @id @default(autoincrement())
+  user_id         Int
+  user            User      @relation(fields: [user_id], references: [id])
+  skill_id        Int
+  skill           Skill     @relation(fields: [skill_id], references: [id])
+  type            SkillType
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  @@map("user_skills") // Maps this model to the existing `user_skills` table
 }
