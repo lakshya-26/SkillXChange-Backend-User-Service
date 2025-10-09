@@ -1,7 +1,6 @@
 const app = require('./app');
 const redis = require('./utilites/redis');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('./utilites/prisma');
 
 const startServer = async function () {
   try {

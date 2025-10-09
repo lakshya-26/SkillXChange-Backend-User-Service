@@ -9,9 +9,7 @@ const compression = require('compression');
 const routes = require('./routes');
 const { commonErrorHandler } = require('./utilites/errorHandler');
 const { ping } = require('./utilites/redis');
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+const prisma = require('./utilites/prisma');
 const app = express();
 
 app.use(bodyParser.json({ limit: '10mb' }));
