@@ -97,6 +97,16 @@ const refreshToken = (req, res, next) => {
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };
 
+const getUsers = (req, res, next) => {
+  const schema = Joi.object({
+    term: Joi.string().min(3).max(50).optional(),
+    page: Joi.number().integer().min(1).optional(),
+    limit: Joi.number().integer().min(1).max(100).optional(),
+  });
+
+  return validateRequest(req, res, next, schema, requestParameterTypes.query);
+};
+
 module.exports = {
   signup,
   login,
@@ -106,4 +116,5 @@ module.exports = {
   resetPassword,
   findUserDetails,
   refreshToken,
+  getUsers,
 };

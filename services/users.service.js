@@ -465,6 +465,116 @@ const refreshToken = async (payload) => {
   return { accessToken, refreshToken: newRefreshToken };
 };
 
+const getUsers = async (payload) => {
+  const { term = '', page = 1, limit = 10, user } = payload;
+  const { id: currentUserId } = user;
+
+  const intLimit = parseInt(limit, 10);
+  const offset = (parseInt(page, 10) - 1) * intLimit;
+
+  const users = await prisma.$queryRawUnsafe(
+    `
+    WITH current_user_skills AS (
+      SELECT 
+        s.name AS skill_name,
+        us.type
+      FROM user_skills us
+      JOIN skills s ON s.id = us.skill_id
+      WHERE us.user_id = $1
+        AND us.deleted_at IS NULL
+        AND s.deleted_at IS NULL
+    )
+    SELECT 
+      u.id,
+      u.name,
+      u.username,
+      u.email,
+      ud.profession,
+      COALESCE(json_agg(DISTINCT jsonb_build_object(
+        'id', s.id,
+        'name', s.name,
+        'type', us.type
+      )) FILTER (WHERE s.id IS NOT NULL), '[]') AS skills,
+      -- Weighted match scoring
+      (
+        -- (1) My LEARN ↔ Their TEACH
+        COALESCE((
+          SELECT COUNT(*) * 3
+          FROM user_skills their
+          JOIN skills sk ON sk.id = their.skill_id
+          JOIN current_user_skills mine ON mine.skill_name ILIKE sk.name
+          WHERE mine.type = 'LEARN'
+            AND their.type = 'TEACH'
+            AND their.user_id = u.id
+            AND their.deleted_at IS NULL
+            AND sk.deleted_at IS NULL
+        ), 0) +
+        -- (2) My TEACH ↔ Their LEARN
+        COALESCE((
+          SELECT COUNT(*) * 2
+          FROM user_skills their
+          JOIN skills sk ON sk.id = their.skill_id
+          JOIN current_user_skills mine ON mine.skill_name ILIKE sk.name
+          WHERE mine.type = 'TEACH'
+            AND their.type = 'LEARN'
+            AND their.user_id = u.id
+            AND their.deleted_at IS NULL
+            AND sk.deleted_at IS NULL
+        ), 0) +
+        -- (3) General fuzzy term match
+        CASE
+          WHEN u.name ILIKE '%' || $2 || '%' THEN 1
+          WHEN u.username ILIKE '%' || $2 || '%' THEN 1
+          WHEN u.email ILIKE '%' || $2 || '%' THEN 1
+          WHEN ud.profession ILIKE '%' || $2 || '%' THEN 1
+          WHEN EXISTS (
+            SELECT 1
+            FROM user_skills us2
+            JOIN skills s2 ON s2.id = us2.skill_id
+            WHERE us2.user_id = u.id
+              AND us2.deleted_at IS NULL
+              AND s2.deleted_at IS NULL
+              AND s2.name ILIKE '%' || $2 || '%'
+          ) THEN 1
+          ELSE 0
+        END
+      ) AS score
+    FROM users u
+    LEFT JOIN user_details ud 
+      ON ud.user_id = u.id AND ud.deleted_at IS NULL
+    LEFT JOIN user_skills us 
+      ON u.id = us.user_id AND us.deleted_at IS NULL
+    LEFT JOIN skills s 
+      ON s.id = us.skill_id AND s.deleted_at IS NULL
+    WHERE u.id != $1
+      AND u.deleted_at IS NULL
+    GROUP BY u.id, ud.profession
+    HAVING (
+      u.name ILIKE '%' || $2 || '%' OR
+      u.username ILIKE '%' || $2 || '%' OR
+      u.email ILIKE '%' || $2 || '%' OR
+      ud.profession ILIKE '%' || $2 || '%' OR
+      EXISTS (
+        SELECT 1 FROM user_skills us2
+        JOIN skills s2 ON s2.id = us2.skill_id
+        WHERE us2.user_id = u.id
+          AND us2.deleted_at IS NULL
+          AND s2.deleted_at IS NULL
+          AND s2.name ILIKE '%' || $2 || '%'
+      )
+    )
+    ORDER BY score DESC, u.created_at DESC
+    LIMIT $3 OFFSET $4
+  `,
+    parseInt(currentUserId),
+    term,
+    intLimit,
+    offset
+  );
+
+  return users;
+};
+
 module.exports = {
   createUser,
   login,
@@ -476,4 +586,5 @@ module.exports = {
   resetPasswordWithToken,
   findUserDetails,
   refreshToken,
+  getUsers,
 };
