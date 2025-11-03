@@ -9,7 +9,6 @@ const { SALT } = require('../constants/auth.constant');
 const { buildUserMatchQuery } = require('../helpers/users.helper');
 const userSerializer = require('../serializers/users.serializer');
 const { uploadBuffer } = require('../utilites/cloudinary');
-const { convertBigInt } = require('../helpers/commonFunctions.helper');
 
 const findUserByEmail = async (payload) => {
   const { email } = payload;
