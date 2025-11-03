@@ -6,6 +6,7 @@ const { CustomException } = require('../utilites/errorHandler');
 const { createTokens, verifyToken } = require('../utilites/jwtHelper');
 const prisma = require('../utilites/prisma');
 const { SALT } = require('../constants/auth.constant');
+const { buildUserMatchQuery } = require('../helpers/users.helper');
 const userSerializer = require('../serializers/users.serializer');
 const { uploadBuffer } = require('../utilites/cloudinary');
 
@@ -465,6 +466,27 @@ const refreshToken = async (payload) => {
   return { accessToken, refreshToken: newRefreshToken };
 };
 
+const getUsersBySearchQuery = async (payload) => {
+  const { term, page, limit, user } = payload;
+  return buildUserMatchQuery({
+    currentUserId: user.id,
+    page,
+    limit,
+    includeTermFilter: true,
+    term,
+  });
+};
+
+const getUsersRecommendations = async (payload) => {
+  const { page, limit, user } = payload;
+  return buildUserMatchQuery({
+    currentUserId: user.id,
+    page,
+    limit,
+    includeTermFilter: false,
+  });
+};
+
 module.exports = {
   createUser,
   login,
@@ -476,4 +498,6 @@ module.exports = {
   resetPasswordWithToken,
   findUserDetails,
   refreshToken,
+  getUsersBySearchQuery,
+  getUsersRecommendations,
 };

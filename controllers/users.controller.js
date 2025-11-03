@@ -117,6 +117,36 @@ const refreshToken = async (req, res, next) => {
   }
 };
 
+const getUsersBySearchQuery = async (req, res, next) => {
+  try {
+    const payload = {
+      ...req.query,
+      user: req.user,
+    };
+    const result = await userService.getUsersBySearchQuery(payload);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const getUsersRecommendations = async (req, res, next) => {
+  try {
+    const payload = {
+      ...req.query,
+      user: req.user,
+    };
+    const result = await userService.getUsersRecommendations(payload);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -128,4 +158,6 @@ module.exports = {
   resetPassword,
   findUserDetails,
   refreshToken,
+  getUsersBySearchQuery,
+  getUsersRecommendations,
 };
