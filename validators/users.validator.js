@@ -99,7 +99,7 @@ const refreshToken = (req, res, next) => {
 
 const getUsersBySearchQuery = (req, res, next) => {
   const schema = Joi.object({
-    term: Joi.string().min(3).max(50).optional(),
+    term: Joi.string().min(1).max(100).optional(),
     page: Joi.number().integer().min(1).optional(),
     limit: Joi.number().integer().min(1).max(100).optional(),
   });
