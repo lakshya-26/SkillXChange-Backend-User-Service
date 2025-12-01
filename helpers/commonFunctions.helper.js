@@ -35,6 +35,20 @@ const validateRequest = (req, res, next, schema, requestParamterType) => {
   return commonErrorHandler(req, res, message, 400);
 };
 
+const convertBigInt = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(convertBigInt);
+  } else if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, value]) => [key, convertBigInt(value)])
+    );
+  } else if (typeof value === 'bigint') {
+    return Number(value);
+  }
+  return value;
+};
+
 module.exports = {
+  convertBigInt,
   validateRequest,
 };

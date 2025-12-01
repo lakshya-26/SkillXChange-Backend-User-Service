@@ -3,11 +3,11 @@ const { commonErrorHandler } = require('../utilites/errorHandler');
 
 const signup = async (req, res, next) => {
   try {
-    const { accessToken, refreshToken, user } = await userService.createUser(
+    const { accessToken, refreshToken } = await userService.createUser(
       req.body
     );
     req.statusCode = 201;
-    req.data = { accessToken, refreshToken, user };
+    req.data = { accessToken, refreshToken };
     next();
   } catch (error) {
     commonErrorHandler(req, res, error.message, error.statusCode || 400);
@@ -16,11 +16,9 @@ const signup = async (req, res, next) => {
 
 const login = async (req, res, next) => {
   try {
-    const { accessToken, refreshToken, user } = await userService.login(
-      req.body
-    );
+    const { accessToken, refreshToken } = await userService.login(req.body);
     req.statusCode = 200;
-    req.data = { accessToken, refreshToken, user };
+    req.data = { accessToken, refreshToken };
     next();
   } catch (error) {
     commonErrorHandler(req, res, error.message, error.statusCode || 401);
@@ -117,6 +115,36 @@ const refreshToken = async (req, res, next) => {
   }
 };
 
+const getUsersBySearchQuery = async (req, res, next) => {
+  try {
+    const payload = {
+      ...req.query,
+      user: req.user,
+    };
+    const result = await userService.getUsersBySearchQuery(payload);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const getUsersRecommendations = async (req, res, next) => {
+  try {
+    const payload = {
+      ...req.query,
+      user: req.user,
+    };
+    const result = await userService.getUsersRecommendations(payload);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -128,4 +156,6 @@ module.exports = {
   resetPassword,
   findUserDetails,
   refreshToken,
+  getUsersBySearchQuery,
+  getUsersRecommendations,
 };

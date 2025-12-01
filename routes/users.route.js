@@ -11,6 +11,8 @@ const {
   forgotPassword,
   resetPassword,
   findUserDetails,
+  getUsersBySearchQuery,
+  getUsersRecommendations,
 } = require('../validators/users.validator');
 const { upload } = require('../middlewares/multer.middleware');
 
@@ -55,6 +57,22 @@ router.put(
   upload.single('profileImage'),
   updateProfile,
   usersController.updateProfile,
+  sendResponse
+);
+
+router.get(
+  '/search',
+  authMiddleware,
+  getUsersBySearchQuery,
+  usersController.getUsersBySearchQuery,
+  sendResponse
+);
+
+router.get(
+  '/recommendations',
+  authMiddleware,
+  getUsersRecommendations,
+  usersController.getUsersRecommendations,
   sendResponse
 );
 
