@@ -370,6 +370,9 @@ const updateProfile = async (payload) => {
     }
   });
 
+  const redisKey = `recommendations:user:${numericUserId}`;
+  await redis.del(redisKey);
+
   const user = await getUserDetails(numericUserId);
   const serializedUser = userSerializer.userDetails(user);
 
@@ -479,12 +482,37 @@ const getUsersBySearchQuery = async (payload) => {
 
 const getUsersRecommendations = async (payload) => {
   const { page, limit, user } = payload;
-  return buildUserMatchQuery({
+  const redisKey = `recommendations:user:${user.id}`;
+  const CACHE_TTL = 900; // 15 minutes
+
+  const cachedData = await redis.get(redisKey);
+  if (cachedData) {
+    try {
+      const parsed =
+        typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
+      if (parsed && parsed.data) {
+        return parsed.data;
+      }
+    } catch (error) {
+      console.error('Error parsing cached recommendations:', error);
+    }
+  }
+
+  const results = await buildUserMatchQuery({
     currentUserId: user.id,
     page,
     limit,
     includeTermFilter: false,
   });
+
+  const cachePayload = {
+    generatedAt: new Date().toISOString(),
+    data: results,
+  };
+
+  await redis.set(redisKey, JSON.stringify(cachePayload), CACHE_TTL);
+
+  return results;
 };
 
 module.exports = {
