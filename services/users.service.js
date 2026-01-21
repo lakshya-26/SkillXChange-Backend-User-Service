@@ -1,14 +1,28 @@
-const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
-const redis = require('../utilites/redis');
-const { sendEmail } = require('../utilites/email');
+const { OAuth2Client } = require('google-auth-library');
+
 const { CustomException } = require('../utilites/errorHandler');
 const { createTokens, verifyToken } = require('../utilites/jwtHelper');
 const prisma = require('../utilites/prisma');
-const { SALT } = require('../constants/auth.constant');
 const { buildUserMatchQuery } = require('../helpers/users.helper');
 const userSerializer = require('../serializers/users.serializer');
 const { uploadBuffer } = require('../utilites/cloudinary');
+const redis = require('../utilites/redis');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const verifyGoogleToken = async (token) => {
+  try {
+    // Assume token is an Access Token and fetch user info
+    const response = await googleClient.request({
+      url: 'https://www.googleapis.com/oauth2/v3/userinfo',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  } catch (error) {
+    // Fallback: If it fails, strictly it's an invalid token for our purpose
+    throw new CustomException('Invalid Google Token', 400);
+  }
+};
 
 const findUserByEmail = async (payload) => {
   const { email } = payload;
@@ -83,8 +97,6 @@ const getUserDetails = async (id) => {
 const createUser = async (payload) => {
   const {
     name,
-    email,
-    password,
     username,
     profession,
     skillsToLearn,
@@ -95,7 +107,15 @@ const createUser = async (payload) => {
     twitter,
     linkedin,
     github,
+    googleToken,
   } = payload;
+
+  if (!googleToken) {
+    throw new CustomException('Google Sign In is required', 400);
+  }
+
+  const payloadFromGoogle = await verifyGoogleToken(googleToken);
+  const email = payloadFromGoogle.email;
 
   const existingUser = await findUserByEmail({ email });
   if (existingUser) {
@@ -107,15 +127,12 @@ const createUser = async (payload) => {
     throw new CustomException('Username already exists', 409);
   }
 
-  const hashedPassword = await bcrypt.hash(password, SALT);
-
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         name,
         username,
         email,
-        password_hash: hashedPassword,
       },
     });
 
@@ -164,41 +181,8 @@ const createUser = async (payload) => {
 
   // Generate tokens after transaction
   const { accessToken, refreshToken } = createTokens(result);
-  const { password_hash: _, ...userWithoutPassword } = result;
 
-  return { accessToken, refreshToken, user: userWithoutPassword };
-};
-
-const login = async (payload) => {
-  const { email, username, password } = payload;
-
-  if (!email && !username) {
-    throw new CustomException('Email or username is required', 400);
-  }
-
-  let user;
-  if (email) {
-    user = await findUserByEmail({ email });
-    if (!user) {
-      throw new CustomException('Email not found', 401);
-    }
-  } else if (username) {
-    user = await findUserByUsername({ username });
-    if (!user) {
-      throw new CustomException('Username not found', 401);
-    }
-  }
-
-  const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-  if (!isPasswordValid) {
-    throw new CustomException('Incorrect password', 401);
-  }
-
-  const { accessToken, refreshToken } = createTokens(user);
-  // Exclude password from the returned user object
-  const { password_hash: _, ...userWithoutPassword } = user;
-
-  return { accessToken, refreshToken, user: userWithoutPassword };
+  return { accessToken, refreshToken, user: result };
 };
 
 const findUserById = async (payload) => {
@@ -379,64 +363,6 @@ const updateProfile = async (payload) => {
   return { ...serializedUser, message: 'Profile updated successfully' };
 };
 
-const generateResetToken = () => {
-  return crypto.randomBytes(32).toString('hex');
-};
-
-const sendResetToken = async (payload) => {
-  const { email } = payload;
-
-  const user = await findUserByEmail({ email });
-  if (!user) {
-    throw new CustomException('User with this email does not exist', 404);
-  }
-
-  const resetToken = generateResetToken();
-  const redisKey = `reset:${resetToken}`;
-
-  await redis.set(redisKey, email, 900);
-
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-
-  const subject = 'Password Reset Request';
-  const text = `Click this link to reset your password: ${resetLink}. This link will expire in 15 minutes.`;
-  const html = `<p>Click <a href="${resetLink}">here</a> to reset your password.</p><p>This link will expire in 15 minutes.</p>`;
-
-  const emailSent = await sendEmail(email, subject, text, html);
-  if (!emailSent) {
-    throw new CustomException('Failed to send reset email', 500);
-  }
-
-  return { message: 'Password reset link sent successfully to your email' };
-};
-
-const resetPasswordWithToken = async (payload) => {
-  const { token, newPassword } = payload;
-
-  const redisKey = `reset:${token}`;
-  const email = await redis.get(redisKey);
-
-  if (!email) {
-    throw new CustomException('Reset token has expired or is invalid', 400);
-  }
-
-  const user = await findUserByEmail({ email });
-  if (!user) {
-    throw new CustomException('User not found', 404);
-  }
-
-  const hashedPassword = await bcrypt.hash(newPassword, SALT);
-
-  await prisma.user.update({
-    where: { email },
-    data: { password_hash: hashedPassword },
-  });
-
-  await redis.del(redisKey);
-
-  return { message: 'Password reset successfully' };
-};
-
 const findUserDetails = async (payload) => {
   const { email, username } = payload;
   let user;
@@ -515,17 +441,62 @@ const getUsersRecommendations = async (payload) => {
   return results;
 };
 
+const checkGoogleUser = async (payload) => {
+  const { googleToken } = payload;
+  if (!googleToken) {
+    throw new CustomException('Google Token is required', 400);
+  }
+
+  const googlePayload = await verifyGoogleToken(googleToken);
+  const { email, name, picture } = googlePayload;
+
+  const user = await findUserByEmail({ email });
+  if (user) {
+    // User exists
+    return {
+      exists: true,
+      email,
+      message: 'Email already exists, please log in.',
+    };
+  }
+
+  // User currently returns false if new, along with info to prefill
+  return {
+    exists: false,
+    email,
+    name,
+    picture,
+  };
+};
+
+const loginWithGoogle = async (payload) => {
+  const { googleToken } = payload;
+  if (!googleToken) {
+    throw new CustomException('Google Token is required', 400);
+  }
+
+  const googlePayload = await verifyGoogleToken(googleToken);
+  const { email } = googlePayload;
+
+  const user = await findUserByEmail({ email });
+  if (!user) {
+    throw new CustomException('Email not found, please sign up.', 404);
+  }
+
+  const { accessToken, refreshToken } = createTokens(user);
+
+  return { accessToken, refreshToken, user };
+};
+
 module.exports = {
   createUser,
-  login,
   findUserByEmail,
   findUserById,
   updateProfile,
-  generateResetToken,
-  sendResetToken,
-  resetPasswordWithToken,
   findUserDetails,
   refreshToken,
   getUsersBySearchQuery,
   getUsersRecommendations,
+  checkGoogleUser,
+  loginWithGoogle,
 };

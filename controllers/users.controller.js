@@ -14,17 +14,6 @@ const signup = async (req, res, next) => {
   }
 };
 
-const login = async (req, res, next) => {
-  try {
-    const { accessToken, refreshToken } = await userService.login(req.body);
-    req.statusCode = 200;
-    req.data = { accessToken, refreshToken };
-    next();
-  } catch (error) {
-    commonErrorHandler(req, res, error.message, error.statusCode || 401);
-  }
-};
-
 const me = async (req, res, next) => {
   try {
     const user = await userService.findUserById({ id: req.user.id });
@@ -65,28 +54,6 @@ const updateProfile = async (req, res, next) => {
     const updatedUser = await userService.updateProfile(payload);
     req.statusCode = 200;
     req.data = updatedUser;
-    next();
-  } catch (error) {
-    commonErrorHandler(req, res, error.message, error.statusCode || 400);
-  }
-};
-
-const forgotPassword = async (req, res, next) => {
-  try {
-    const result = await userService.sendResetToken(req.body);
-    req.statusCode = 200;
-    req.data = result;
-    next();
-  } catch (error) {
-    commonErrorHandler(req, res, error.message, error.statusCode || 400);
-  }
-};
-
-const resetPassword = async (req, res, next) => {
-  try {
-    const result = await userService.resetPasswordWithToken(req.body);
-    req.statusCode = 200;
-    req.data = result;
     next();
   } catch (error) {
     commonErrorHandler(req, res, error.message, error.statusCode || 400);
@@ -145,17 +112,38 @@ const getUsersRecommendations = async (req, res, next) => {
   }
 };
 
+const checkGoogleUser = async (req, res, next) => {
+  try {
+    const result = await userService.checkGoogleUser(req.body);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const googleLogin = async (req, res, next) => {
+  try {
+    const result = await userService.loginWithGoogle(req.body);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 401);
+  }
+};
+
 module.exports = {
   signup,
-  login,
   me,
   profile,
   logout,
   updateProfile,
-  forgotPassword,
-  resetPassword,
   findUserDetails,
   refreshToken,
   getUsersBySearchQuery,
   getUsersRecommendations,
+  checkGoogleUser,
+  googleLogin,
 };
