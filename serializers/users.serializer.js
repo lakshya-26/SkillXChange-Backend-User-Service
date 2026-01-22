@@ -3,9 +3,11 @@ const userDetails = (user, payload = {}, includeAllDetails = true) => {
     ...(includeAllDetails && {
       id: user.id,
       name: user.name,
+      isEmailVerified: user.isEmailVerified,
       profession: user.user_details?.profession,
       address: user.user_details?.address,
       phoneNumber: user.user_details?.phone_number,
+      isPhoneVerified: user.user_details?.isPhoneVerified,
       instagram: user.user_details?.instagram,
       twitter: user.user_details?.twitter,
       linkedin: user.user_details?.linkedin,

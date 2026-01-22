@@ -20,6 +20,7 @@ model User {
   name            String    
   username        String    @unique
   email           String    @unique
+  isEmailVerified Boolean   @default(false) @map("is_email_verified")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @default(now()) @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
@@ -37,6 +38,7 @@ model UserDetails {
   profession      String
   address         String
   phone_number    String?
+  isPhoneVerified Boolean   @default(false) @map("is_phone_verified")
   instagram       String?
   twitter         String?
   linkedin        String?
