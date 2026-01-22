@@ -10,6 +10,100 @@ const redis = require('../utilites/redis');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const calculateScoreBreakdown = async (user) => {
+  let score = 0;
+  const earned = [];
+  const missing = [];
+
+  // 1. Google Account (10 pts)
+  if (user.email) {
+    score += 10;
+    earned.push('Google account connected');
+  } else {
+    missing.push('Connect Google account');
+  }
+
+  // 2. Profile Photo (10 pts)
+  if (user.user_details?.profile_image) {
+    score += 10;
+    earned.push('Profile photo added');
+  } else {
+    missing.push('Add profile photo');
+  }
+
+  // 3. Bio / profession (10 pts)
+  if (user.user_details?.profession) {
+    score += 10;
+    earned.push('Bio / profession added');
+  } else {
+    missing.push('Add profession');
+  }
+
+  // 4. Skills
+  const userSkills = user.skills || [];
+  const teachSkills = userSkills.filter((s) => s.type === 'TEACH');
+  const learnSkills = userSkills.filter((s) => s.type === 'LEARN');
+
+  if (teachSkills.length >= 1) {
+    score += 15;
+    earned.push('At least one teaching skill');
+  } else {
+    missing.push('Add a skill to teach');
+  }
+
+  if (learnSkills.length >= 1) {
+    score += 10;
+    earned.push('At least one learning skill');
+  } else {
+    missing.push('Add a skill to learn');
+  }
+
+  if (userSkills.length >= 3) {
+    score += 10;
+    earned.push('Multiple skills added');
+  } else {
+    missing.push('Add more skills (3+)');
+  }
+
+  // 5. Phone Verified (15 pts)
+  if (user.user_details?.isPhoneVerified) {
+    score += 15;
+    earned.push('Phone number verified');
+  } else {
+    missing.push('Verify phone number');
+  }
+
+  // 6. Proof Links (10 pts)
+  const ud = user.user_details || {};
+  if (ud.github || ud.linkedin || ud.twitter) {
+    score += 10;
+    earned.push('Proof links added');
+  } else {
+    missing.push('Add social links');
+  }
+
+  // Cap at 100
+  score = Math.min(score, 100);
+
+  // Update DB if score changed
+  if (user.id && user.profileScore !== score) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        profileScore: score,
+        profileScoreUpdatedAt: new Date(),
+      },
+    });
+    user.profileScore = score;
+  }
+
+  let level = 'Low';
+  if (score >= 80) level = 'High';
+  else if (score >= 50) level = 'Medium';
+
+  return { score, max: 100, level, earned, missing };
+};
+
 const verifyGoogleToken = async (token) => {
   try {
     const looksLikeJwt =
@@ -76,6 +170,7 @@ const getUserDetails = async (id) => {
       username: true,
       email: true,
       isEmailVerified: true,
+      profileScore: true,
       user_details: {
         select: {
           profession: true,
@@ -103,6 +198,15 @@ const getUserDetails = async (id) => {
         },
         where: {
           deletedAt: null,
+        },
+      },
+      reputationScore: true,
+      profileScore: true,
+      reputationUpdatedAt: true,
+      badges: {
+        select: {
+          badge_type: true,
+          earned_at: true,
         },
       },
     },
@@ -210,7 +314,10 @@ const createUser = async (payload) => {
     return user;
   });
 
-  // Generate tokens after transaction
+  // Calculate initial profile score
+  const fullUser = await getUserDetails(result.id);
+  await calculateScoreBreakdown(fullUser);
+
   const { accessToken, refreshToken } = createTokens(result);
 
   return { accessToken, refreshToken, user: result };
@@ -392,6 +499,10 @@ const updateProfile = async (payload) => {
   await redis.del(redisKey);
 
   const user = await getUserDetails(numericUserId);
+
+  // Recalculate Score
+  await calculateScoreBreakdown(user);
+
   const serializedUser = userSerializer.userDetails(user);
 
   return { ...serializedUser, message: 'Profile updated successfully' };
@@ -530,6 +641,110 @@ const loginWithGoogle = async (payload) => {
   return { accessToken, refreshToken, user };
 };
 
+const getProfileScore = async (payload) => {
+  const { user: currentUser } = payload;
+  if (!currentUser) throw new CustomException('User not authenticated', 401);
+
+  const user = await getUserDetails(currentUser.id);
+  if (!user) throw new CustomException('User not found', 404);
+
+  return await calculateScoreBreakdown(user);
+};
+
+const updateReputationAndBadges = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      user_details: true,
+      receivedRatings: true,
+      skills: {
+        include: { skill: true },
+      },
+    },
+  });
+
+  if (!user) return;
+
+  // 1. Calculate Reputation
+  let score = 0;
+
+  const ratings = user.receivedRatings;
+  const ratingCount = ratings.length;
+  const avgRating =
+    ratingCount > 0
+      ? ratings.reduce((sum, r) => sum + r.stars, 0) / ratingCount
+      : 0;
+
+  // Signal: Average Peer Rating (30)
+  if (avgRating >= 4.5) score += 30;
+  else if (avgRating >= 4.0) score += 20;
+
+  // Signal: Completed Exchanges (25)
+  if (ratingCount >= 5) score += 25;
+
+  // Signal: Profile Completeness (15)
+  if (user.profileScore >= 70) score += 15;
+
+  // Signal: Account Age (10)
+  const ageMonths =
+    (new Date() - new Date(user.createdAt)) / (1000 * 60 * 60 * 24 * 30);
+  if (ageMonths >= 3) score += 10;
+
+  // Signal: Response Rate (10) - Placeholder
+  // score += 10;
+
+  // Signal: No reports (10) - Placeholder
+  score += 10;
+
+  // Cap at 100
+  score = Math.min(score, 100);
+
+  // 2. Assign Badges
+  const badges = [];
+
+  // Verified
+  if (user.user_details?.isPhoneVerified && user.email) {
+    badges.push('Verified');
+  }
+
+  // Reliable
+  if (ratingCount >= 3 && avgRating >= 4.0) {
+    badges.push('Reliable');
+  }
+
+  // Top Rated
+  if (ratingCount >= 10 && avgRating >= 4.5 && score >= 80) {
+    badges.push('Top Rated');
+  }
+
+  // Active Mentor
+  // Has > 0 teaching skills and >= 5 ratings
+  const hasTeachingSkills = user.skills.some((s) => s.type === 'TEACH');
+  if (hasTeachingSkills && ratingCount >= 5) {
+    badges.push('Active Mentor');
+  }
+
+  // Update User
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      reputationScore: score,
+      reputationUpdatedAt: new Date(),
+    },
+  });
+
+  // Update Badges
+  // Wipe and recreate
+  await prisma.userBadge.deleteMany({ where: { user_id: userId } });
+  if (badges.length > 0) {
+    await prisma.userBadge.createMany({
+      data: badges.map((b) => ({ user_id: userId, badge_type: b })),
+    });
+  }
+
+  return { score, badges };
+};
+
 module.exports = {
   createUser,
   findUserByEmail,
@@ -540,5 +755,7 @@ module.exports = {
   getUsersBySearchQuery,
   getUsersRecommendations,
   checkGoogleUser,
+  getProfileScore,
   loginWithGoogle,
+  updateReputationAndBadges,
 };
