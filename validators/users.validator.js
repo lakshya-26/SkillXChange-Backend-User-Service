@@ -11,7 +11,7 @@ const signup = (req, res, next) => {
     name: Joi.string().min(3).max(50).required(),
     username: Joi.string().alphanum().min(3).max(30).required(),
     email: Joi.string().email().required(),
-    googleToken: Joi.string().required(),
+    googleToken: Joi.string().min(1).required(),
     profession: Joi.string().min(3).max(50).required(),
     skillsToLearn: Joi.array().items(Joi.string().min(3).max(50)).required(),
     skillsToTeach: Joi.array().items(Joi.string().min(3).max(50)).required(),
@@ -44,6 +44,12 @@ const updateProfile = (req, res, next) => {
     skillsToTeach: Joi.array().items(Joi.string().min(3).max(50)).optional(),
     address: Joi.string().min(3).max(1000).optional(),
     phoneNumber: Joi.string().empty('').min(10).max(10).optional(),
+    isPhoneVerified: Joi.boolean()
+      .truthy('true')
+      .truthy('1')
+      .falsy('false')
+      .falsy('0')
+      .optional(),
     instagram: Joi.string().empty('').min(3).max(50).optional(),
     twitter: Joi.string().empty('').min(3).max(50).optional(),
     github: Joi.string().empty('').min(3).max(50).optional(),
@@ -91,14 +97,14 @@ const getUsersRecommendations = (req, res, next) => {
 
 const checkGoogleUser = (req, res, next) => {
   const schema = Joi.object({
-    googleToken: Joi.string().required(),
+    googleToken: Joi.string().min(1).required(),
   });
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };
 
 const googleLogin = (req, res, next) => {
   const schema = Joi.object({
-    googleToken: Joi.string().required(),
+    googleToken: Joi.string().min(1).required(),
   });
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };

@@ -12,15 +12,42 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const verifyGoogleToken = async (token) => {
   try {
-    // Assume token is an Access Token and fetch user info
-    const response = await googleClient.request({
-      url: 'https://www.googleapis.com/oauth2/v3/userinfo',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return response.data;
+    const looksLikeJwt =
+      typeof token === 'string' && token.split('.').length === 3;
+
+    if (looksLikeJwt) {
+      if (!process.env.GOOGLE_CLIENT_ID) {
+        throw new CustomException('GOOGLE_CLIENT_ID is not set on server', 500);
+      }
+
+      const ticket = await googleClient.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+
+      return ticket.getPayload();
+    }
+
+    const response = await fetch(
+      'https://www.googleapis.com/oauth2/v3/userinfo',
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg =
+        data?.error_description ||
+        data?.error?.message ||
+        'Invalid Google access token (userinfo request failed)';
+      throw new CustomException(msg, 400);
+    }
+
+    return data;
   } catch (error) {
-    // Fallback: If it fails, strictly it's an invalid token for our purpose
-    throw new CustomException('Invalid Google Token', 400);
+    throw new CustomException(error.message, 400);
   }
 };
 
@@ -48,11 +75,13 @@ const getUserDetails = async (id) => {
       name: true,
       username: true,
       email: true,
+      isEmailVerified: true,
       user_details: {
         select: {
           profession: true,
           address: true,
           phone_number: true,
+          isPhoneVerified: true,
           instagram: true,
           twitter: true,
           linkedin: true,
@@ -115,7 +144,7 @@ const createUser = async (payload) => {
   }
 
   const payloadFromGoogle = await verifyGoogleToken(googleToken);
-  const email = payloadFromGoogle.email;
+  const { email, picture } = payloadFromGoogle;
 
   const existingUser = await findUserByEmail({ email });
   if (existingUser) {
@@ -133,6 +162,7 @@ const createUser = async (payload) => {
         name,
         username,
         email,
+        isEmailVerified: true,
       },
     });
 
@@ -146,6 +176,7 @@ const createUser = async (payload) => {
         twitter,
         linkedin,
         github,
+        profile_image: picture,
       },
     });
 
@@ -212,6 +243,7 @@ const updateProfile = async (payload) => {
     twitter,
     linkedin,
     github,
+    isPhoneVerified,
   } = profileData;
 
   // Normalize arrays when coming from multipart/form-data as strings
@@ -291,12 +323,14 @@ const updateProfile = async (payload) => {
         linkedin,
         github,
         ...(profileImageUrl ? { profile_image: profileImageUrl } : {}),
+        isPhoneVerified,
       },
       create: {
         user_id: numericUserId,
         profession: profession || '',
         address: address || '',
         phone_number: phoneNumber,
+        isPhoneVerified: isPhoneVerified || false,
         instagram,
         twitter,
         linkedin,
@@ -481,6 +515,14 @@ const loginWithGoogle = async (payload) => {
   const user = await findUserByEmail({ email });
   if (!user) {
     throw new CustomException('Email not found, please sign up.', 404);
+  }
+
+  if (!user.isEmailVerified) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isEmailVerified: true },
+    });
+    user.isEmailVerified = true;
   }
 
   const { accessToken, refreshToken } = createTokens(user);
