@@ -44,6 +44,12 @@ router.get('/', findUserDetails, usersController.findUserDetails, sendResponse);
 router.post('/logout', authMiddleware, usersController.logout, sendResponse);
 router.get('/me', authMiddleware, usersController.me, sendResponse);
 router.get(
+  '/me/profile-score',
+  authMiddleware,
+  usersController.getProfileScore,
+  sendResponse
+);
+router.get(
   '/profile/:id',
   authMiddleware,
   profile,

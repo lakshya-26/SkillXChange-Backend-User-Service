@@ -29,6 +29,8 @@ const buildUserMatchQuery = async ({
       u.username,
       u.email,
       ud.profession,
+      u.reputation_score,
+      u.profile_score,
       COALESCE(json_agg(DISTINCT jsonb_build_object(
         'id', s.id,
         'name', s.name,
@@ -143,7 +145,8 @@ const buildUserMatchQuery = async ({
           AND s2.name ILIKE ${likeTerm}
       )
     )
-    ORDER BY score DESC, u.created_at DESC
+    ORDER BY score DESC, u.reputation_score DESC, u.profile_score DESC, u.created_at DESC
+
     LIMIT ${intLimit} OFFSET ${offset};
   `;
 

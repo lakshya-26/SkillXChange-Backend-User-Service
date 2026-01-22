@@ -123,6 +123,18 @@ const checkGoogleUser = async (req, res, next) => {
   }
 };
 
+const getProfileScore = async (req, res, next) => {
+  try {
+    const payload = { user: req.user };
+    const result = await userService.getProfileScore(payload);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
 const googleLogin = async (req, res, next) => {
   try {
     const result = await userService.loginWithGoogle(req.body);
@@ -145,5 +157,6 @@ module.exports = {
   getUsersBySearchQuery,
   getUsersRecommendations,
   checkGoogleUser,
+  getProfileScore,
   googleLogin,
 };

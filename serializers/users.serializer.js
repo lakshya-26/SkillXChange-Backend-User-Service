@@ -13,6 +13,8 @@ const userDetails = (user, payload = {}, includeAllDetails = true) => {
       linkedin: user.user_details?.linkedin,
       github: user.user_details?.github,
       profileImage: user.user_details?.profile_image,
+      profileScore: user.profileScore,
+      reputationScore: user.reputationScore,
     }),
     ...(includeAllDetails && {
       skillsToLearn:
