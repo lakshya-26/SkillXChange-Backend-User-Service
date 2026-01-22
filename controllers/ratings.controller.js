@@ -4,7 +4,6 @@ const { commonErrorHandler } = require('../utilites/errorHandler');
 const createRating = async (req, res) => {
   try {
     const raterId = req.user.id;
-    // We assume middleware populates req.user
     const token = req.headers.authorization;
 
     const result = await ratingsService.createRating(raterId, req.body, token);
