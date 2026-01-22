@@ -2,8 +2,7 @@ const prisma = require('../utilites/prisma');
 const { CustomException } = require('../utilites/errorHandler');
 const userService = require('./users.service');
 
-const COMMUNICATION_SERVICE_URL =
-  process.env.COMMUNICATION_SERVICE_URL || 'http://localhost:8080/api';
+const COMMUNICATION_SERVICE_URL = process.env.COMMUNICATION_SERVICE_URL;
 
 const canRate = async (raterId, rateeId, token) => {
   // 1. Call Communication Service to find eligible conversation
