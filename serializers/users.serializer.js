@@ -15,6 +15,7 @@ const userDetails = (user, payload = {}, includeAllDetails = true) => {
       profileImage: user.user_details?.profile_image,
       profileScore: user.profileScore,
       reputationScore: user.reputationScore,
+      badges: user.badges.map((b) => b.badge_type),
     }),
     ...(includeAllDetails && {
       skillsToLearn:
