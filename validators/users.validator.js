@@ -109,6 +109,23 @@ const googleLogin = (req, res, next) => {
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };
 
+const patchUserSettings = (req, res, next) => {
+  const schema = Joi.object({
+    availabilityNotes: Joi.string().allow('').max(5000).optional(),
+    preferences: Joi.object({
+      emailDigest: Joi.boolean().optional(),
+      matchAlerts: Joi.boolean().optional(),
+    }).optional(),
+    privacy: Joi.object({
+      showEmail: Joi.boolean().optional(),
+      showPhone: Joi.boolean().optional(),
+      profileVisibility: Joi.string().valid('public', 'community').optional(),
+    }).optional(),
+  }).min(1);
+
+  return validateRequest(req, res, next, schema, requestParameterTypes.body);
+};
+
 module.exports = {
   signup,
   profile,
@@ -119,4 +136,5 @@ module.exports = {
   getUsersRecommendations,
   checkGoogleUser,
   googleLogin,
+  patchUserSettings,
 };

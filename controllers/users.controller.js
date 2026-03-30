@@ -16,7 +16,10 @@ const signup = async (req, res, next) => {
 
 const me = async (req, res, next) => {
   try {
-    const user = await userService.findUserById({ id: req.user.id });
+    const user = await userService.findUserById({
+      id: req.user.id,
+      viewerId: req.user.id,
+    });
     req.statusCode = 200;
     req.data = user;
     next();
@@ -27,7 +30,10 @@ const me = async (req, res, next) => {
 
 const profile = async (req, res, next) => {
   try {
-    const user = await userService.findUserById({ id: req.params.id });
+    const user = await userService.findUserById({
+      id: req.params.id,
+      viewerId: req.user.id,
+    });
     req.statusCode = 200;
     req.data = user;
     next();
@@ -146,6 +152,28 @@ const googleLogin = async (req, res, next) => {
   }
 };
 
+const getMySettings = async (req, res, next) => {
+  try {
+    const data = await userService.getUserSettings(req.user.id);
+    req.statusCode = 200;
+    req.data = data;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const patchMySettings = async (req, res, next) => {
+  try {
+    const data = await userService.patchUserSettings(req.user.id, req.body);
+    req.statusCode = 200;
+    req.data = data;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
 module.exports = {
   signup,
   me,
@@ -159,4 +187,6 @@ module.exports = {
   checkGoogleUser,
   getProfileScore,
   googleLogin,
+  getMySettings,
+  patchMySettings,
 };

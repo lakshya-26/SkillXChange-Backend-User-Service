@@ -37,8 +37,22 @@ model User {
   givenRatings    Rating[]  @relation("GivenRatings")
   receivedRatings Rating[]  @relation("ReceivedRatings")
   badges          UserBadge[]
+  settings        UserSettings?
 
   @@map("users") // Maps this model to the existing `users` table
+}
+
+model UserSettings {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique @map("user_id")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  availabilityNotes String?  @map("availability_notes") @db.Text
+  preferences       Json     @default("{}")
+  privacy           Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("user_settings")
 }
 
 model Rating {
