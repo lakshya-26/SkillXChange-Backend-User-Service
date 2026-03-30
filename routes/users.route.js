@@ -12,6 +12,7 @@ const {
   getUsersRecommendations,
   checkGoogleUser,
   googleLogin,
+  patchUserSettings,
 } = require('../validators/users.validator');
 const { upload } = require('../middlewares/multer.middleware');
 
@@ -47,6 +48,19 @@ router.get(
   '/me/profile-score',
   authMiddleware,
   usersController.getProfileScore,
+  sendResponse
+);
+router.get(
+  '/me/settings',
+  authMiddleware,
+  usersController.getMySettings,
+  sendResponse
+);
+router.patch(
+  '/me/settings',
+  authMiddleware,
+  patchUserSettings,
+  usersController.patchMySettings,
   sendResponse
 );
 router.get(

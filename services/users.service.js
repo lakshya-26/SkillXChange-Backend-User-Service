@@ -324,15 +324,118 @@ const createUser = async (payload) => {
 };
 
 const findUserById = async (payload) => {
-  const { id } = payload;
-  const user = await getUserDetails(parseInt(id));
+  const { id, viewerId } = payload;
+  const userId = parseInt(id, 10);
+  const user = await getUserDetails(userId);
 
   if (!user) {
     throw new CustomException('User not found', 404);
   }
 
   const serializedUser = userSerializer.userDetails(user);
+  const viewer =
+    viewerId !== undefined && viewerId !== null
+      ? parseInt(viewerId, 10)
+      : userId;
+
+  if (viewer !== userId) {
+    const settings = await prisma.userSettings.findUnique({
+      where: { userId },
+    });
+    const privacy = settings?.privacy;
+    if (privacy && typeof privacy === 'object' && !Array.isArray(privacy)) {
+      if (privacy.showEmail === false) {
+        delete serializedUser.email;
+      }
+      if (privacy.showPhone === false) {
+        delete serializedUser.phoneNumber;
+      }
+    }
+  }
+
   return serializedUser;
+};
+
+const getUserSettings = async (userId) => {
+  const row = await prisma.userSettings.findUnique({
+    where: { userId },
+  });
+  if (!row) {
+    return {
+      availabilityNotes: '',
+      preferences: { emailDigest: true, matchAlerts: true },
+      privacy: {
+        showEmail: true,
+        showPhone: true,
+        profileVisibility: 'community',
+      },
+    };
+  }
+  const prefs =
+    row.preferences &&
+    typeof row.preferences === 'object' &&
+    !Array.isArray(row.preferences)
+      ? row.preferences
+      : {};
+  const priv =
+    row.privacy &&
+    typeof row.privacy === 'object' &&
+    !Array.isArray(row.privacy)
+      ? row.privacy
+      : {};
+  return {
+    availabilityNotes: row.availabilityNotes || '',
+    preferences: prefs,
+    privacy: priv,
+  };
+};
+
+const patchUserSettings = async (userId, body) => {
+  const existing = await prisma.userSettings.findUnique({
+    where: { userId },
+  });
+  const prevPrefs =
+    existing?.preferences &&
+    typeof existing.preferences === 'object' &&
+    !Array.isArray(existing.preferences)
+      ? existing.preferences
+      : {};
+  const prevPrivacy =
+    existing?.privacy &&
+    typeof existing.privacy === 'object' &&
+    !Array.isArray(existing.privacy)
+      ? existing.privacy
+      : {};
+
+  const nextAvailability =
+    body.availabilityNotes !== undefined
+      ? body.availabilityNotes
+      : (existing?.availabilityNotes ?? null);
+  const nextPrefs =
+    body.preferences !== undefined
+      ? { ...prevPrefs, ...body.preferences }
+      : prevPrefs;
+  const nextPrivacy =
+    body.privacy !== undefined
+      ? { ...prevPrivacy, ...body.privacy }
+      : prevPrivacy;
+
+  await prisma.userSettings.upsert({
+    where: { userId },
+    create: {
+      userId,
+      availabilityNotes: nextAvailability,
+      preferences: nextPrefs,
+      privacy: nextPrivacy,
+    },
+    update: {
+      availabilityNotes: nextAvailability,
+      preferences: nextPrefs,
+      privacy: nextPrivacy,
+    },
+  });
+
+  return getUserSettings(userId);
 };
 
 const updateProfile = async (payload) => {
@@ -531,7 +634,7 @@ const refreshToken = async (payload) => {
   if (!decoded) {
     throw new CustomException('Invalid refresh token', 401);
   }
-  const user = await findUserById({ id: decoded.id });
+  const user = await findUserById({ id: decoded.id, viewerId: decoded.id });
   if (!user) {
     throw new CustomException('User not found', 404);
   }
@@ -758,4 +861,6 @@ module.exports = {
   getProfileScore,
   loginWithGoogle,
   updateReputationAndBadges,
+  getUserSettings,
+  patchUserSettings,
 };
