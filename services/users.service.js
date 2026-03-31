@@ -66,14 +66,7 @@ const calculateScoreBreakdown = async (user) => {
   }
 
   // 5. Phone Verified (15 pts)
-  if (user.user_details?.isPhoneVerified) {
-    score += 15;
-    earned.push('Phone number verified');
-  } else {
-    missing.push('Verify phone number');
-  }
-
-  // 6. Proof Links (10 pts)
+  // 5. Proof Links (10 pts)
   const ud = user.user_details || {};
   if (ud.github || ud.linkedin || ud.twitter) {
     score += 10;
@@ -353,7 +346,8 @@ const findUserById = async (payload) => {
     }
   }
 
-  return serializedUser;
+  const stats = await getExchangeAndRatingStats(userId);
+  return { ...serializedUser, ...stats };
 };
 
 const getUserSettings = async (userId) => {
@@ -453,7 +447,6 @@ const updateProfile = async (payload) => {
     twitter,
     linkedin,
     github,
-    isPhoneVerified,
   } = profileData;
 
   // Normalize arrays when coming from multipart/form-data as strings
@@ -533,14 +526,13 @@ const updateProfile = async (payload) => {
         linkedin,
         github,
         ...(profileImageUrl ? { profile_image: profileImageUrl } : {}),
-        isPhoneVerified,
       },
       create: {
         user_id: numericUserId,
         profession: profession || '',
         address: address || '',
         phone_number: phoneNumber,
-        isPhoneVerified: isPhoneVerified || false,
+        isPhoneVerified: false,
         instagram,
         twitter,
         linkedin,
@@ -754,12 +746,38 @@ const getProfileScore = async (payload) => {
   return await calculateScoreBreakdown(user);
 };
 
+const getExchangeAndRatingStats = async (userId) => {
+  const uid = Number(userId);
+
+  const [exchangeCount, ratingsAgg] = await Promise.all([
+    prisma.session.count({
+      where: {
+        status: 'COMPLETED',
+        outcomeHappened: true,
+        OR: [{ userAId: uid }, { userBId: uid }],
+      },
+    }),
+    prisma.sessionRating.aggregate({
+      where: { rateeId: uid },
+      _avg: { stars: true },
+      _count: { id: true },
+    }),
+  ]);
+
+  return {
+    exchangeCount,
+    averageRating: ratingsAgg._avg.stars ? Number(ratingsAgg._avg.stars) : 0,
+    ratingCount: ratingsAgg._count.id || 0,
+  };
+};
+
 const updateReputationAndBadges = async (userId) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
       user_details: true,
       receivedRatings: true,
+      receivedSessionRatings: true,
       skills: {
         include: { skill: true },
       },
@@ -771,19 +789,23 @@ const updateReputationAndBadges = async (userId) => {
   // 1. Calculate Reputation
   let score = 0;
 
-  const ratings = user.receivedRatings;
-  const ratingCount = ratings.length;
+  const legacyRatings = user.receivedRatings || [];
+  const sessionRatings = user.receivedSessionRatings || [];
+  const allRatings = [...legacyRatings, ...sessionRatings];
+  const ratingCount = allRatings.length;
   const avgRating =
     ratingCount > 0
-      ? ratings.reduce((sum, r) => sum + r.stars, 0) / ratingCount
+      ? allRatings.reduce((sum, r) => sum + r.stars, 0) / ratingCount
       : 0;
+
+  const { exchangeCount } = await getExchangeAndRatingStats(userId);
 
   // Signal: Average Peer Rating (30)
   if (avgRating >= 4.5) score += 30;
   else if (avgRating >= 4.0) score += 20;
 
   // Signal: Completed Exchanges (25)
-  if (ratingCount >= 5) score += 25;
+  if (exchangeCount >= 5) score += 25;
 
   // Signal: Profile Completeness (15)
   if (user.profileScore >= 70) score += 15;
@@ -821,9 +843,9 @@ const updateReputationAndBadges = async (userId) => {
   }
 
   // Active Mentor
-  // Has > 0 teaching skills and >= 5 ratings
+  // Has > 0 teaching skills and decent completed exchanges
   const hasTeachingSkills = user.skills.some((s) => s.type === 'TEACH');
-  if (hasTeachingSkills && ratingCount >= 5) {
+  if (hasTeachingSkills && exchangeCount >= 3) {
     badges.push('Active Mentor');
   }
 
@@ -863,4 +885,5 @@ module.exports = {
   updateReputationAndBadges,
   getUserSettings,
   patchUserSettings,
+  getExchangeAndRatingStats,
 };

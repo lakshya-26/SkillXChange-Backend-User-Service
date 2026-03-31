@@ -163,6 +163,18 @@ const getMySettings = async (req, res, next) => {
   }
 };
 
+const communityHighlights = async (req, res, next) => {
+  try {
+    const communityService = require('../services/community.service');
+    const data = await communityService.getMonthlyHighlights();
+    req.statusCode = 200;
+    req.data = data;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
 const patchMySettings = async (req, res, next) => {
   try {
     const data = await userService.patchUserSettings(req.user.id, req.body);
@@ -189,4 +201,5 @@ module.exports = {
   googleLogin,
   getMySettings,
   patchMySettings,
+  communityHighlights,
 };

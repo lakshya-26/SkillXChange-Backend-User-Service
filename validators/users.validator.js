@@ -44,12 +44,6 @@ const updateProfile = (req, res, next) => {
     skillsToTeach: Joi.array().items(Joi.string().min(3).max(50)).optional(),
     address: Joi.string().min(3).max(1000).optional(),
     phoneNumber: Joi.string().empty('').min(10).max(10).optional(),
-    isPhoneVerified: Joi.boolean()
-      .truthy('true')
-      .truthy('1')
-      .falsy('false')
-      .falsy('0')
-      .optional(),
     instagram: Joi.string().empty('').min(3).max(50).optional(),
     twitter: Joi.string().empty('').min(3).max(50).optional(),
     github: Joi.string().empty('').min(3).max(50).optional(),

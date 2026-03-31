@@ -15,6 +15,14 @@ enum SkillType {
   TEACH
 }
 
+enum SessionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id              Int       @id @default(autoincrement())
   name            String    
@@ -38,6 +46,13 @@ model User {
   receivedRatings Rating[]  @relation("ReceivedRatings")
   badges          UserBadge[]
   settings        UserSettings?
+
+  sessionsCreated Session[] @relation("SessionsCreatedBy")
+  sessionsAsUserA Session[] @relation("SessionsUserA")
+  sessionsAsUserB Session[] @relation("SessionsUserB")
+
+  givenSessionRatings    SessionRating[] @relation("GivenSessionRatings")
+  receivedSessionRatings SessionRating[] @relation("ReceivedSessionRatings")
 
   @@map("users") // Maps this model to the existing `users` table
 }
@@ -68,6 +83,59 @@ model Rating {
 
   @@unique([rater_id, ratee_id, conversation_id])
   @@map("ratings")
+}
+
+model Session {
+  id              String        @id @default(uuid()) @db.Uuid
+  title           String
+  description     String?       @db.Text
+  scheduledAt     DateTime      @map("scheduled_at")
+  durationMinutes Int           @map("duration_minutes")
+  meetingLink     String?       @map("meeting_link") @db.Text
+  status          SessionStatus @default(PENDING)
+
+  createdBy       User          @relation("SessionsCreatedBy", fields: [createdById], references: [id])
+  createdById     Int           @map("created_by_id")
+
+  userA           User          @relation("SessionsUserA", fields: [userAId], references: [id])
+  userAId         Int           @map("user_a_id")
+
+  userB           User          @relation("SessionsUserB", fields: [userBId], references: [id])
+  userBId         Int           @map("user_b_id")
+
+  outcomeDecidedAt   DateTime? @map("outcome_decided_at")
+  outcomeDecidedById Int?      @map("outcome_decided_by_id")
+  outcomeHappened    Boolean?  @map("outcome_happened")
+
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  ratings         SessionRating[]
+
+  @@index([userAId, userBId, scheduledAt])
+  @@index([userBId, userAId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@map("sessions")
+}
+
+model SessionRating {
+  id          Int      @id @default(autoincrement())
+  sessionId   String   @map("session_id") @db.Uuid
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  raterId     Int      @map("rater_id")
+  rater       User     @relation("GivenSessionRatings", fields: [raterId], references: [id])
+
+  rateeId     Int      @map("ratee_id")
+  ratee       User     @relation("ReceivedSessionRatings", fields: [rateeId], references: [id])
+
+  stars       Int
+  feedback    String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([sessionId, raterId])
+  @@index([rateeId])
+  @@map("session_ratings")
 }
 
 model UserBadge {
