@@ -95,4 +95,11 @@ router.get(
   sendResponse
 );
 
+router.get(
+  '/community-highlights',
+  authMiddleware,
+  usersController.communityHighlights,
+  sendResponse
+);
+
 module.exports = router;
