@@ -29,11 +29,55 @@ const buildUserMatchQuery = async ({
       u.username,
       u.email,
       ud.profession,
+      u.reputation_score,
+      u.profile_score,
       COALESCE(json_agg(DISTINCT jsonb_build_object(
         'id', s.id,
         'name', s.name,
         'type', us.type
       )) FILTER (WHERE s.id IS NOT NULL), '[]') AS skills,
+      jsonb_build_object(
+        'theyTeachYou', COALESCE((
+          SELECT json_agg(sk.name)
+          FROM user_skills their
+          JOIN skills sk ON sk.id = their.skill_id
+          JOIN current_user_skills mine ON mine.skill_name ILIKE sk.name
+          WHERE mine.type = 'LEARN'
+            AND their.type = 'TEACH'
+            AND their.user_id = u.id
+            AND their.deleted_at IS NULL
+            AND sk.deleted_at IS NULL
+        ), '[]'::json),
+        'youTeachThem', COALESCE((
+          SELECT json_agg(sk.name)
+          FROM user_skills their
+          JOIN skills sk ON sk.id = their.skill_id
+          JOIN current_user_skills mine ON mine.skill_name ILIKE sk.name
+          WHERE mine.type = 'TEACH'
+            AND their.type = 'LEARN'
+            AND their.user_id = u.id
+            AND their.deleted_at IS NULL
+            AND sk.deleted_at IS NULL
+        ), '[]'::json),
+        'profileMatch', CASE
+          WHEN ${includeTermFilter} = true AND (
+            u.name ILIKE ${likeTerm} OR
+            u.username ILIKE ${likeTerm} OR
+            u.email ILIKE ${likeTerm} OR
+            ud.profession ILIKE ${likeTerm} OR
+            EXISTS (
+              SELECT 1
+              FROM user_skills us2
+              JOIN skills s2 ON s2.id = us2.skill_id
+              WHERE us2.user_id = u.id
+                AND us2.deleted_at IS NULL
+                AND s2.deleted_at IS NULL
+                AND s2.name ILIKE ${likeTerm}
+            )
+          ) THEN true
+          ELSE false
+        END
+      ) AS reasons,
       (
         COALESCE((
           SELECT COUNT(*) * 3
@@ -101,7 +145,8 @@ const buildUserMatchQuery = async ({
           AND s2.name ILIKE ${likeTerm}
       )
     )
-    ORDER BY score DESC, u.created_at DESC
+    ORDER BY score DESC, u.reputation_score DESC, u.profile_score DESC, u.created_at DESC
+
     LIMIT ${intLimit} OFFSET ${offset};
   `;
 

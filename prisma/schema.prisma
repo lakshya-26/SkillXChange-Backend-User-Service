@@ -15,12 +15,20 @@ enum SkillType {
   TEACH
 }
 
+enum SessionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id              Int       @id @default(autoincrement())
   name            String    
   username        String    @unique
   email           String    @unique
-  password_hash   String
+  isEmailVerified Boolean   @default(false) @map("is_email_verified")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @default(now()) @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
@@ -28,7 +36,117 @@ model User {
   user_details    UserDetails?
   skills          UserSkills[]
 
+  profileScore    Int       @default(0) @map("profile_score")
+  profileScoreUpdatedAt DateTime? @map("profile_score_updated_at")
+
+  reputationScore Int       @default(0) @map("reputation_score")
+  reputationUpdatedAt DateTime? @map("reputation_updated_at")
+
+  givenRatings    Rating[]  @relation("GivenRatings")
+  receivedRatings Rating[]  @relation("ReceivedRatings")
+  badges          UserBadge[]
+  settings        UserSettings?
+
+  sessionsCreated Session[] @relation("SessionsCreatedBy")
+  sessionsAsUserA Session[] @relation("SessionsUserA")
+  sessionsAsUserB Session[] @relation("SessionsUserB")
+
+  givenSessionRatings    SessionRating[] @relation("GivenSessionRatings")
+  receivedSessionRatings SessionRating[] @relation("ReceivedSessionRatings")
+
   @@map("users") // Maps this model to the existing `users` table
+}
+
+model UserSettings {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique @map("user_id")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  availabilityNotes String?  @map("availability_notes") @db.Text
+  preferences       Json     @default("{}")
+  privacy           Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("user_settings")
+}
+
+model Rating {
+  id              Int       @id @default(autoincrement())
+  rater_id        Int
+  rater           User      @relation("GivenRatings", fields: [rater_id], references: [id])
+  ratee_id        Int
+  ratee           User      @relation("ReceivedRatings", fields: [ratee_id], references: [id])
+  conversation_id String    
+  stars           Int
+  feedback        String?
+  created_at      DateTime  @default(now())
+
+  @@unique([rater_id, ratee_id, conversation_id])
+  @@map("ratings")
+}
+
+model Session {
+  id              String        @id @default(uuid()) @db.Uuid
+  title           String
+  description     String?       @db.Text
+  scheduledAt     DateTime      @map("scheduled_at")
+  durationMinutes Int           @map("duration_minutes")
+  meetingLink     String?       @map("meeting_link") @db.Text
+  status          SessionStatus @default(PENDING)
+
+  createdBy       User          @relation("SessionsCreatedBy", fields: [createdById], references: [id])
+  createdById     Int           @map("created_by_id")
+
+  userA           User          @relation("SessionsUserA", fields: [userAId], references: [id])
+  userAId         Int           @map("user_a_id")
+
+  userB           User          @relation("SessionsUserB", fields: [userBId], references: [id])
+  userBId         Int           @map("user_b_id")
+
+  outcomeDecidedAt   DateTime? @map("outcome_decided_at")
+  outcomeDecidedById Int?      @map("outcome_decided_by_id")
+  outcomeHappened    Boolean?  @map("outcome_happened")
+
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  ratings         SessionRating[]
+
+  @@index([userAId, userBId, scheduledAt])
+  @@index([userBId, userAId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@map("sessions")
+}
+
+model SessionRating {
+  id          Int      @id @default(autoincrement())
+  sessionId   String   @map("session_id") @db.Uuid
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  raterId     Int      @map("rater_id")
+  rater       User     @relation("GivenSessionRatings", fields: [raterId], references: [id])
+
+  rateeId     Int      @map("ratee_id")
+  ratee       User     @relation("ReceivedSessionRatings", fields: [rateeId], references: [id])
+
+  stars       Int
+  feedback    String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([sessionId, raterId])
+  @@index([rateeId])
+  @@map("session_ratings")
+}
+
+model UserBadge {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  user       User     @relation(fields: [user_id], references: [id])
+  badge_type String
+  earned_at  DateTime @default(now())
+
+  @@unique([user_id, badge_type])
+  @@map("user_badges")
 }
 
 model UserDetails {
@@ -38,6 +156,7 @@ model UserDetails {
   profession      String
   address         String
   phone_number    String?
+  isPhoneVerified Boolean   @default(false) @map("is_phone_verified")
   instagram       String?
   twitter         String?
   linkedin        String?

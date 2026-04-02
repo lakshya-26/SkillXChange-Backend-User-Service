@@ -11,7 +11,7 @@ const signup = (req, res, next) => {
     name: Joi.string().min(3).max(50).required(),
     username: Joi.string().alphanum().min(3).max(30).required(),
     email: Joi.string().email().required(),
-    password: Joi.string().min(8).required(),
+    googleToken: Joi.string().min(1).required(),
     profession: Joi.string().min(3).max(50).required(),
     skillsToLearn: Joi.array().items(Joi.string().min(3).max(50)).required(),
     skillsToTeach: Joi.array().items(Joi.string().min(3).max(50)).required(),
@@ -22,16 +22,6 @@ const signup = (req, res, next) => {
     github: Joi.string().empty('').min(3).max(50).optional(),
     linkedin: Joi.string().empty('').min(3).max(50).optional(),
   });
-
-  return validateRequest(req, res, next, schema, requestParameterTypes.body);
-};
-
-const login = (req, res, next) => {
-  const schema = Joi.object({
-    email: Joi.string().email().optional(),
-    username: Joi.string().alphanum().min(3).max(30).optional(),
-    password: Joi.string().min(8).required(),
-  }).or('email', 'username');
 
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
 };
@@ -58,23 +48,6 @@ const updateProfile = (req, res, next) => {
     twitter: Joi.string().empty('').min(3).max(50).optional(),
     github: Joi.string().empty('').min(3).max(50).optional(),
     linkedin: Joi.string().empty('').min(3).max(50).optional(),
-  });
-
-  return validateRequest(req, res, next, schema, requestParameterTypes.body);
-};
-
-const forgotPassword = (req, res, next) => {
-  const schema = Joi.object({
-    email: Joi.string().email().required(),
-  });
-
-  return validateRequest(req, res, next, schema, requestParameterTypes.body);
-};
-
-const resetPassword = (req, res, next) => {
-  const schema = Joi.object({
-    token: Joi.string().required(),
-    newPassword: Joi.string().min(8).required(),
   });
 
   return validateRequest(req, res, next, schema, requestParameterTypes.body);
@@ -116,15 +89,46 @@ const getUsersRecommendations = (req, res, next) => {
   return validateRequest(req, res, next, schema, requestParameterTypes.query);
 };
 
+const checkGoogleUser = (req, res, next) => {
+  const schema = Joi.object({
+    googleToken: Joi.string().min(1).required(),
+  });
+  return validateRequest(req, res, next, schema, requestParameterTypes.body);
+};
+
+const googleLogin = (req, res, next) => {
+  const schema = Joi.object({
+    googleToken: Joi.string().min(1).required(),
+  });
+  return validateRequest(req, res, next, schema, requestParameterTypes.body);
+};
+
+const patchUserSettings = (req, res, next) => {
+  const schema = Joi.object({
+    availabilityNotes: Joi.string().allow('').max(5000).optional(),
+    preferences: Joi.object({
+      emailDigest: Joi.boolean().optional(),
+      matchAlerts: Joi.boolean().optional(),
+    }).optional(),
+    privacy: Joi.object({
+      showEmail: Joi.boolean().optional(),
+      showPhone: Joi.boolean().optional(),
+      profileVisibility: Joi.string().valid('public', 'community').optional(),
+    }).optional(),
+  }).min(1);
+
+  return validateRequest(req, res, next, schema, requestParameterTypes.body);
+};
+
 module.exports = {
   signup,
-  login,
   profile,
   updateProfile,
-  forgotPassword,
-  resetPassword,
   findUserDetails,
   refreshToken,
   getUsersBySearchQuery,
   getUsersRecommendations,
+  checkGoogleUser,
+  googleLogin,
+  patchUserSettings,
 };
