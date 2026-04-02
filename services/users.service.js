@@ -1,14 +1,142 @@
-const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
-const redis = require('../utilites/redis');
-const { sendEmail } = require('../utilites/email');
+const { OAuth2Client } = require('google-auth-library');
+
 const { CustomException } = require('../utilites/errorHandler');
 const { createTokens, verifyToken } = require('../utilites/jwtHelper');
 const prisma = require('../utilites/prisma');
-const { SALT } = require('../constants/auth.constant');
 const { buildUserMatchQuery } = require('../helpers/users.helper');
 const userSerializer = require('../serializers/users.serializer');
 const { uploadBuffer } = require('../utilites/cloudinary');
+const redis = require('../utilites/redis');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const calculateScoreBreakdown = async (user) => {
+  let score = 0;
+  const earned = [];
+  const missing = [];
+
+  // 1. Google Account (10 pts)
+  if (user.email) {
+    score += 10;
+    earned.push('Google account connected');
+  } else {
+    missing.push('Connect Google account');
+  }
+
+  // 2. Profile Photo (10 pts)
+  if (user.user_details?.profile_image) {
+    score += 10;
+    earned.push('Profile photo added');
+  } else {
+    missing.push('Add profile photo');
+  }
+
+  // 3. Bio / profession (10 pts)
+  if (user.user_details?.profession) {
+    score += 10;
+    earned.push('Bio / profession added');
+  } else {
+    missing.push('Add profession');
+  }
+
+  // 4. Skills
+  const userSkills = user.skills || [];
+  const teachSkills = userSkills.filter((s) => s.type === 'TEACH');
+  const learnSkills = userSkills.filter((s) => s.type === 'LEARN');
+
+  if (teachSkills.length >= 1) {
+    score += 15;
+    earned.push('At least one teaching skill');
+  } else {
+    missing.push('Add a skill to teach');
+  }
+
+  if (learnSkills.length >= 1) {
+    score += 10;
+    earned.push('At least one learning skill');
+  } else {
+    missing.push('Add a skill to learn');
+  }
+
+  if (userSkills.length >= 3) {
+    score += 10;
+    earned.push('Multiple skills added');
+  } else {
+    missing.push('Add more skills (3+)');
+  }
+
+  // 5. Phone Verified (15 pts)
+  // 5. Proof Links (10 pts)
+  const ud = user.user_details || {};
+  if (ud.github || ud.linkedin || ud.twitter) {
+    score += 10;
+    earned.push('Proof links added');
+  } else {
+    missing.push('Add social links');
+  }
+
+  // Cap at 100
+  score = Math.min(score, 100);
+
+  // Update DB if score changed
+  if (user.id && user.profileScore !== score) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        profileScore: score,
+        profileScoreUpdatedAt: new Date(),
+      },
+    });
+    user.profileScore = score;
+  }
+
+  let level = 'Low';
+  if (score >= 80) level = 'High';
+  else if (score >= 50) level = 'Medium';
+
+  return { score, max: 100, level, earned, missing };
+};
+
+const verifyGoogleToken = async (token) => {
+  try {
+    const looksLikeJwt =
+      typeof token === 'string' && token.split('.').length === 3;
+
+    if (looksLikeJwt) {
+      if (!process.env.GOOGLE_CLIENT_ID) {
+        throw new CustomException('GOOGLE_CLIENT_ID is not set on server', 500);
+      }
+
+      const ticket = await googleClient.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+
+      return ticket.getPayload();
+    }
+
+    const response = await fetch(
+      'https://www.googleapis.com/oauth2/v3/userinfo',
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg =
+        data?.error_description ||
+        data?.error?.message ||
+        'Invalid Google access token (userinfo request failed)';
+      throw new CustomException(msg, 400);
+    }
+
+    return data;
+  } catch (error) {
+    throw new CustomException(error.message, 400);
+  }
+};
 
 const findUserByEmail = async (payload) => {
   const { email } = payload;
@@ -34,11 +162,14 @@ const getUserDetails = async (id) => {
       name: true,
       username: true,
       email: true,
+      isEmailVerified: true,
+      profileScore: true,
       user_details: {
         select: {
           profession: true,
           address: true,
           phone_number: true,
+          isPhoneVerified: true,
           instagram: true,
           twitter: true,
           linkedin: true,
@@ -62,6 +193,15 @@ const getUserDetails = async (id) => {
           deletedAt: null,
         },
       },
+      reputationScore: true,
+      profileScore: true,
+      reputationUpdatedAt: true,
+      badges: {
+        select: {
+          badge_type: true,
+          earned_at: true,
+        },
+      },
     },
   });
 };
@@ -83,8 +223,6 @@ const getUserDetails = async (id) => {
 const createUser = async (payload) => {
   const {
     name,
-    email,
-    password,
     username,
     profession,
     skillsToLearn,
@@ -95,7 +233,15 @@ const createUser = async (payload) => {
     twitter,
     linkedin,
     github,
+    googleToken,
   } = payload;
+
+  if (!googleToken) {
+    throw new CustomException('Google Sign In is required', 400);
+  }
+
+  const payloadFromGoogle = await verifyGoogleToken(googleToken);
+  const { email, picture } = payloadFromGoogle;
 
   const existingUser = await findUserByEmail({ email });
   if (existingUser) {
@@ -107,15 +253,13 @@ const createUser = async (payload) => {
     throw new CustomException('Username already exists', 409);
   }
 
-  const hashedPassword = await bcrypt.hash(password, SALT);
-
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         name,
         username,
         email,
-        password_hash: hashedPassword,
+        isEmailVerified: true,
       },
     });
 
@@ -129,6 +273,7 @@ const createUser = async (payload) => {
         twitter,
         linkedin,
         github,
+        profile_image: picture,
       },
     });
 
@@ -162,55 +307,129 @@ const createUser = async (payload) => {
     return user;
   });
 
-  // Generate tokens after transaction
+  // Calculate initial profile score
+  const fullUser = await getUserDetails(result.id);
+  await calculateScoreBreakdown(fullUser);
+
   const { accessToken, refreshToken } = createTokens(result);
-  const { password_hash: _, ...userWithoutPassword } = result;
 
-  return { accessToken, refreshToken, user: userWithoutPassword };
-};
-
-const login = async (payload) => {
-  const { email, username, password } = payload;
-
-  if (!email && !username) {
-    throw new CustomException('Email or username is required', 400);
-  }
-
-  let user;
-  if (email) {
-    user = await findUserByEmail({ email });
-    if (!user) {
-      throw new CustomException('Email not found', 401);
-    }
-  } else if (username) {
-    user = await findUserByUsername({ username });
-    if (!user) {
-      throw new CustomException('Username not found', 401);
-    }
-  }
-
-  const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-  if (!isPasswordValid) {
-    throw new CustomException('Incorrect password', 401);
-  }
-
-  const { accessToken, refreshToken } = createTokens(user);
-  // Exclude password from the returned user object
-  const { password_hash: _, ...userWithoutPassword } = user;
-
-  return { accessToken, refreshToken, user: userWithoutPassword };
+  return { accessToken, refreshToken, user: result };
 };
 
 const findUserById = async (payload) => {
-  const { id } = payload;
-  const user = await getUserDetails(parseInt(id));
+  const { id, viewerId } = payload;
+  const userId = parseInt(id, 10);
+  const user = await getUserDetails(userId);
 
   if (!user) {
     throw new CustomException('User not found', 404);
   }
 
   const serializedUser = userSerializer.userDetails(user);
-  return serializedUser;
+  const viewer =
+    viewerId !== undefined && viewerId !== null
+      ? parseInt(viewerId, 10)
+      : userId;
+
+  if (viewer !== userId) {
+    const settings = await prisma.userSettings.findUnique({
+      where: { userId },
+    });
+    const privacy = settings?.privacy;
+    if (privacy && typeof privacy === 'object' && !Array.isArray(privacy)) {
+      if (privacy.showEmail === false) {
+        delete serializedUser.email;
+      }
+      if (privacy.showPhone === false) {
+        delete serializedUser.phoneNumber;
+      }
+    }
+  }
+
+  const stats = await getExchangeAndRatingStats(userId);
+  return { ...serializedUser, ...stats };
+};
+
+const getUserSettings = async (userId) => {
+  const row = await prisma.userSettings.findUnique({
+    where: { userId },
+  });
+  if (!row) {
+    return {
+      availabilityNotes: '',
+      preferences: { emailDigest: true, matchAlerts: true },
+      privacy: {
+        showEmail: true,
+        showPhone: true,
+        profileVisibility: 'community',
+      },
+    };
+  }
+  const prefs =
+    row.preferences &&
+    typeof row.preferences === 'object' &&
+    !Array.isArray(row.preferences)
+      ? row.preferences
+      : {};
+  const priv =
+    row.privacy &&
+    typeof row.privacy === 'object' &&
+    !Array.isArray(row.privacy)
+      ? row.privacy
+      : {};
+  return {
+    availabilityNotes: row.availabilityNotes || '',
+    preferences: prefs,
+    privacy: priv,
+  };
+};
+
+const patchUserSettings = async (userId, body) => {
+  const existing = await prisma.userSettings.findUnique({
+    where: { userId },
+  });
+  const prevPrefs =
+    existing?.preferences &&
+    typeof existing.preferences === 'object' &&
+    !Array.isArray(existing.preferences)
+      ? existing.preferences
+      : {};
+  const prevPrivacy =
+    existing?.privacy &&
+    typeof existing.privacy === 'object' &&
+    !Array.isArray(existing.privacy)
+      ? existing.privacy
+      : {};
+
+  const nextAvailability =
+    body.availabilityNotes !== undefined
+      ? body.availabilityNotes
+      : (existing?.availabilityNotes ?? null);
+  const nextPrefs =
+    body.preferences !== undefined
+      ? { ...prevPrefs, ...body.preferences }
+      : prevPrefs;
+  const nextPrivacy =
+    body.privacy !== undefined
+      ? { ...prevPrivacy, ...body.privacy }
+      : prevPrivacy;
+
+  await prisma.userSettings.upsert({
+    where: { userId },
+    create: {
+      userId,
+      availabilityNotes: nextAvailability,
+      preferences: nextPrefs,
+      privacy: nextPrivacy,
+    },
+    update: {
+      availabilityNotes: nextAvailability,
+      preferences: nextPrefs,
+      privacy: nextPrivacy,
+    },
+  });
+
+  return getUserSettings(userId);
 };
 
 const updateProfile = async (payload) => {
@@ -313,6 +532,7 @@ const updateProfile = async (payload) => {
         profession: profession || '',
         address: address || '',
         phone_number: phoneNumber,
+        isPhoneVerified: false,
         instagram,
         twitter,
         linkedin,
@@ -370,68 +590,17 @@ const updateProfile = async (payload) => {
     }
   });
 
+  const redisKey = `recommendations:user:${numericUserId}`;
+  await redis.del(redisKey);
+
   const user = await getUserDetails(numericUserId);
+
+  // Recalculate Score
+  await calculateScoreBreakdown(user);
+
   const serializedUser = userSerializer.userDetails(user);
 
   return { ...serializedUser, message: 'Profile updated successfully' };
-};
-
-const generateResetToken = () => {
-  return crypto.randomBytes(32).toString('hex');
-};
-
-const sendResetToken = async (payload) => {
-  const { email } = payload;
-
-  const user = await findUserByEmail({ email });
-  if (!user) {
-    throw new CustomException('User with this email does not exist', 404);
-  }
-
-  const resetToken = generateResetToken();
-  const redisKey = `reset:${resetToken}`;
-
-  await redis.set(redisKey, email, 900);
-
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-
-  const subject = 'Password Reset Request';
-  const text = `Click this link to reset your password: ${resetLink}. This link will expire in 15 minutes.`;
-  const html = `<p>Click <a href="${resetLink}">here</a> to reset your password.</p><p>This link will expire in 15 minutes.</p>`;
-
-  const emailSent = await sendEmail(email, subject, text, html);
-  if (!emailSent) {
-    throw new CustomException('Failed to send reset email', 500);
-  }
-
-  return { message: 'Password reset link sent successfully to your email' };
-};
-
-const resetPasswordWithToken = async (payload) => {
-  const { token, newPassword } = payload;
-
-  const redisKey = `reset:${token}`;
-  const email = await redis.get(redisKey);
-
-  if (!email) {
-    throw new CustomException('Reset token has expired or is invalid', 400);
-  }
-
-  const user = await findUserByEmail({ email });
-  if (!user) {
-    throw new CustomException('User not found', 404);
-  }
-
-  const hashedPassword = await bcrypt.hash(newPassword, SALT);
-
-  await prisma.user.update({
-    where: { email },
-    data: { password_hash: hashedPassword },
-  });
-
-  await redis.del(redisKey);
-
-  return { message: 'Password reset successfully' };
 };
 
 const findUserDetails = async (payload) => {
@@ -457,7 +626,7 @@ const refreshToken = async (payload) => {
   if (!decoded) {
     throw new CustomException('Invalid refresh token', 401);
   }
-  const user = await findUserById({ id: decoded.id });
+  const user = await findUserById({ id: decoded.id, viewerId: decoded.id });
   if (!user) {
     throw new CustomException('User not found', 404);
   }
@@ -479,25 +648,242 @@ const getUsersBySearchQuery = async (payload) => {
 
 const getUsersRecommendations = async (payload) => {
   const { page, limit, user } = payload;
-  return buildUserMatchQuery({
+  const redisKey = `recommendations:user:${user.id}`;
+  const CACHE_TTL = 900; // 15 minutes
+
+  const cachedData = await redis.get(redisKey);
+  if (cachedData) {
+    try {
+      const parsed =
+        typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
+      if (parsed && parsed.data) {
+        return parsed.data;
+      }
+    } catch (error) {
+      console.error('Error parsing cached recommendations:', error);
+    }
+  }
+
+  const results = await buildUserMatchQuery({
     currentUserId: user.id,
     page,
     limit,
     includeTermFilter: false,
   });
+
+  const cachePayload = {
+    generatedAt: new Date().toISOString(),
+    data: results,
+  };
+
+  await redis.set(redisKey, JSON.stringify(cachePayload), CACHE_TTL);
+
+  return results;
+};
+
+const checkGoogleUser = async (payload) => {
+  const { googleToken } = payload;
+  if (!googleToken) {
+    throw new CustomException('Google Token is required', 400);
+  }
+
+  const googlePayload = await verifyGoogleToken(googleToken);
+  const { email, name, picture } = googlePayload;
+
+  const user = await findUserByEmail({ email });
+  if (user) {
+    // User exists
+    return {
+      exists: true,
+      email,
+      message: 'Email already exists, please log in.',
+    };
+  }
+
+  // User currently returns false if new, along with info to prefill
+  return {
+    exists: false,
+    email,
+    name,
+    picture,
+  };
+};
+
+const loginWithGoogle = async (payload) => {
+  const { googleToken } = payload;
+  if (!googleToken) {
+    throw new CustomException('Google Token is required', 400);
+  }
+
+  const googlePayload = await verifyGoogleToken(googleToken);
+  const { email } = googlePayload;
+
+  const user = await findUserByEmail({ email });
+  if (!user) {
+    throw new CustomException('Email not found, please sign up.', 404);
+  }
+
+  if (!user.isEmailVerified) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isEmailVerified: true },
+    });
+    user.isEmailVerified = true;
+  }
+
+  const { accessToken, refreshToken } = createTokens(user);
+
+  return { accessToken, refreshToken, user };
+};
+
+const getProfileScore = async (payload) => {
+  const { user: currentUser } = payload;
+  if (!currentUser) throw new CustomException('User not authenticated', 401);
+
+  const user = await getUserDetails(currentUser.id);
+  if (!user) throw new CustomException('User not found', 404);
+
+  return await calculateScoreBreakdown(user);
+};
+
+const getExchangeAndRatingStats = async (userId) => {
+  const uid = Number(userId);
+
+  const [exchangeCount, ratingsAgg] = await Promise.all([
+    prisma.session.count({
+      where: {
+        status: 'COMPLETED',
+        outcomeHappened: true,
+        OR: [{ userAId: uid }, { userBId: uid }],
+      },
+    }),
+    prisma.sessionRating.aggregate({
+      where: { rateeId: uid },
+      _avg: { stars: true },
+      _count: { id: true },
+    }),
+  ]);
+
+  return {
+    exchangeCount,
+    averageRating: ratingsAgg._avg.stars ? Number(ratingsAgg._avg.stars) : 0,
+    ratingCount: ratingsAgg._count.id || 0,
+  };
+};
+
+const updateReputationAndBadges = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      user_details: true,
+      receivedRatings: true,
+      receivedSessionRatings: true,
+      skills: {
+        include: { skill: true },
+      },
+    },
+  });
+
+  if (!user) return;
+
+  // 1. Calculate Reputation
+  let score = 0;
+
+  const legacyRatings = user.receivedRatings || [];
+  const sessionRatings = user.receivedSessionRatings || [];
+  const allRatings = [...legacyRatings, ...sessionRatings];
+  const ratingCount = allRatings.length;
+  const avgRating =
+    ratingCount > 0
+      ? allRatings.reduce((sum, r) => sum + r.stars, 0) / ratingCount
+      : 0;
+
+  const { exchangeCount } = await getExchangeAndRatingStats(userId);
+
+  // Signal: Average Peer Rating (30)
+  if (avgRating >= 4.5) score += 30;
+  else if (avgRating >= 4.0) score += 20;
+
+  // Signal: Completed Exchanges (25)
+  if (exchangeCount >= 5) score += 25;
+
+  // Signal: Profile Completeness (15)
+  if (user.profileScore >= 70) score += 15;
+
+  // Signal: Account Age (10)
+  const ageMonths =
+    (new Date() - new Date(user.createdAt)) / (1000 * 60 * 60 * 24 * 30);
+  if (ageMonths >= 3) score += 10;
+
+  // Signal: Response Rate (10) - Placeholder
+  // score += 10;
+
+  // Signal: No reports (10) - Placeholder
+  score += 10;
+
+  // Cap at 100
+  score = Math.min(score, 100);
+
+  // 2. Assign Badges
+  const badges = [];
+
+  // Verified
+  if (user.user_details?.isPhoneVerified && user.email) {
+    badges.push('Verified');
+  }
+
+  // Reliable
+  if (ratingCount >= 3 && avgRating >= 4.0) {
+    badges.push('Reliable');
+  }
+
+  // Top Rated
+  if (ratingCount >= 10 && avgRating >= 4.5 && score >= 80) {
+    badges.push('Top Rated');
+  }
+
+  // Active Mentor
+  // Has > 0 teaching skills and decent completed exchanges
+  const hasTeachingSkills = user.skills.some((s) => s.type === 'TEACH');
+  if (hasTeachingSkills && exchangeCount >= 3) {
+    badges.push('Active Mentor');
+  }
+
+  // Update User
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      reputationScore: score,
+      reputationUpdatedAt: new Date(),
+    },
+  });
+
+  // Update Badges
+  // Wipe and recreate
+  await prisma.userBadge.deleteMany({ where: { user_id: userId } });
+  if (badges.length > 0) {
+    await prisma.userBadge.createMany({
+      data: badges.map((b) => ({ user_id: userId, badge_type: b })),
+    });
+  }
+
+  return { score, badges };
 };
 
 module.exports = {
   createUser,
-  login,
   findUserByEmail,
   findUserById,
   updateProfile,
-  generateResetToken,
-  sendResetToken,
-  resetPasswordWithToken,
   findUserDetails,
   refreshToken,
   getUsersBySearchQuery,
   getUsersRecommendations,
+  checkGoogleUser,
+  getProfileScore,
+  loginWithGoogle,
+  updateReputationAndBadges,
+  getUserSettings,
+  patchUserSettings,
+  getExchangeAndRatingStats,
 };

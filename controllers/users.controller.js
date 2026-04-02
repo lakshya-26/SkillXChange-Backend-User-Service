@@ -14,20 +14,12 @@ const signup = async (req, res, next) => {
   }
 };
 
-const login = async (req, res, next) => {
-  try {
-    const { accessToken, refreshToken } = await userService.login(req.body);
-    req.statusCode = 200;
-    req.data = { accessToken, refreshToken };
-    next();
-  } catch (error) {
-    commonErrorHandler(req, res, error.message, error.statusCode || 401);
-  }
-};
-
 const me = async (req, res, next) => {
   try {
-    const user = await userService.findUserById({ id: req.user.id });
+    const user = await userService.findUserById({
+      id: req.user.id,
+      viewerId: req.user.id,
+    });
     req.statusCode = 200;
     req.data = user;
     next();
@@ -38,7 +30,10 @@ const me = async (req, res, next) => {
 
 const profile = async (req, res, next) => {
   try {
-    const user = await userService.findUserById({ id: req.params.id });
+    const user = await userService.findUserById({
+      id: req.params.id,
+      viewerId: req.user.id,
+    });
     req.statusCode = 200;
     req.data = user;
     next();
@@ -65,28 +60,6 @@ const updateProfile = async (req, res, next) => {
     const updatedUser = await userService.updateProfile(payload);
     req.statusCode = 200;
     req.data = updatedUser;
-    next();
-  } catch (error) {
-    commonErrorHandler(req, res, error.message, error.statusCode || 400);
-  }
-};
-
-const forgotPassword = async (req, res, next) => {
-  try {
-    const result = await userService.sendResetToken(req.body);
-    req.statusCode = 200;
-    req.data = result;
-    next();
-  } catch (error) {
-    commonErrorHandler(req, res, error.message, error.statusCode || 400);
-  }
-};
-
-const resetPassword = async (req, res, next) => {
-  try {
-    const result = await userService.resetPasswordWithToken(req.body);
-    req.statusCode = 200;
-    req.data = result;
     next();
   } catch (error) {
     commonErrorHandler(req, res, error.message, error.statusCode || 400);
@@ -145,17 +118,88 @@ const getUsersRecommendations = async (req, res, next) => {
   }
 };
 
+const checkGoogleUser = async (req, res, next) => {
+  try {
+    const result = await userService.checkGoogleUser(req.body);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const getProfileScore = async (req, res, next) => {
+  try {
+    const payload = { user: req.user };
+    const result = await userService.getProfileScore(payload);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const googleLogin = async (req, res, next) => {
+  try {
+    const result = await userService.loginWithGoogle(req.body);
+    req.statusCode = 200;
+    req.data = result;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 401);
+  }
+};
+
+const getMySettings = async (req, res, next) => {
+  try {
+    const data = await userService.getUserSettings(req.user.id);
+    req.statusCode = 200;
+    req.data = data;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const communityHighlights = async (req, res, next) => {
+  try {
+    const communityService = require('../services/community.service');
+    const data = await communityService.getMonthlyHighlights();
+    req.statusCode = 200;
+    req.data = data;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
+const patchMySettings = async (req, res, next) => {
+  try {
+    const data = await userService.patchUserSettings(req.user.id, req.body);
+    req.statusCode = 200;
+    req.data = data;
+    next();
+  } catch (error) {
+    commonErrorHandler(req, res, error.message, error.statusCode || 400);
+  }
+};
+
 module.exports = {
   signup,
-  login,
   me,
   profile,
   logout,
   updateProfile,
-  forgotPassword,
-  resetPassword,
   findUserDetails,
   refreshToken,
   getUsersBySearchQuery,
   getUsersRecommendations,
+  checkGoogleUser,
+  getProfileScore,
+  googleLogin,
+  getMySettings,
+  patchMySettings,
+  communityHighlights,
 };

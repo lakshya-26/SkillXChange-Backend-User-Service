@@ -4,15 +4,15 @@ const { sendResponse } = require('../middlewares/reqRes.middleware');
 const { authMiddleware } = require('../middlewares/auth.middleware');
 const {
   signup,
-  login,
   refreshToken,
   profile,
   updateProfile,
-  forgotPassword,
-  resetPassword,
   findUserDetails,
   getUsersBySearchQuery,
   getUsersRecommendations,
+  checkGoogleUser,
+  googleLogin,
+  patchUserSettings,
 } = require('../validators/users.validator');
 const { upload } = require('../middlewares/multer.middleware');
 
@@ -20,30 +20,49 @@ const router = Router();
 
 // Public routes
 router.post('/signup', signup, usersController.signup, sendResponse);
-router.post('/login', login, usersController.login, sendResponse);
+router.post(
+  '/google-check',
+  checkGoogleUser,
+  usersController.checkGoogleUser,
+  sendResponse
+);
+router.post(
+  '/google-login',
+  googleLogin,
+  usersController.googleLogin,
+  sendResponse
+);
 router.post(
   '/refresh-token',
   refreshToken,
   usersController.refreshToken,
   sendResponse
 );
-router.post(
-  '/forgot-password',
-  forgotPassword,
-  usersController.forgotPassword,
-  sendResponse
-);
-router.post(
-  '/reset-password',
-  resetPassword,
-  usersController.resetPassword,
-  sendResponse
-);
+
 router.get('/', findUserDetails, usersController.findUserDetails, sendResponse);
 
 // Protected routes
 router.post('/logout', authMiddleware, usersController.logout, sendResponse);
 router.get('/me', authMiddleware, usersController.me, sendResponse);
+router.get(
+  '/me/profile-score',
+  authMiddleware,
+  usersController.getProfileScore,
+  sendResponse
+);
+router.get(
+  '/me/settings',
+  authMiddleware,
+  usersController.getMySettings,
+  sendResponse
+);
+router.patch(
+  '/me/settings',
+  authMiddleware,
+  patchUserSettings,
+  usersController.patchMySettings,
+  sendResponse
+);
 router.get(
   '/profile/:id',
   authMiddleware,
@@ -73,6 +92,13 @@ router.get(
   authMiddleware,
   getUsersRecommendations,
   usersController.getUsersRecommendations,
+  sendResponse
+);
+
+router.get(
+  '/community-highlights',
+  authMiddleware,
+  usersController.communityHighlights,
   sendResponse
 );
 
