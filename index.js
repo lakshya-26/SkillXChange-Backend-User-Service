@@ -12,8 +12,9 @@ const startServer = async function () {
     await prisma.$connect();
     console.log('... Config ✔');
 
-    app.listen(process.env.SERVER_PORT);
-    console.log(`--- Server started on ${process.env.SERVER_PORT} ---\n\n`);
+    const port = process.env.PORT || process.env.SERVER_PORT;
+    app.listen(port, '0.0.0.0');
+    console.log(`--- Server started on ${port} ---\n\n`);
   } catch (err) {
     console.log('server setup failed', err);
     console.log('Error: ', err.message);
